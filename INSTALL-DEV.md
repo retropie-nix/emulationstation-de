@@ -1,4 +1,4 @@
-# ES-DE (EmulationStation Desktop Edition) v3.0 (development version) - Building and advanced configuration
+# ES-DE Frontend (development version) - Building and advanced configuration
 
 This document is only relevant for the current ES-DE development version, if you would like to see the documentation for the latest stable release, refer to [INSTALL.md](INSTALL.md) instead.
 
@@ -55,8 +55,10 @@ sudo pacman -S gcc clang make cmake pkgconf sdl2 ffmpeg freeimage freetype2 libg
 
 All of the required packages can be installed with apt-get:
 ```
-sudo apt-get install clang-format cmake libsdl2-dev libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libfreeimage-dev libgit2-dev libcurl4-gnutls-dev libpugixml-dev libpoppler-cpp-dev
+sudo apt-get install clang-format cmake libraspberrypi-dev libsdl2-dev libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libfreeimage-dev libfreetype6-dev libgit2-dev libcurl4-gnutls-dev libpugixml-dev libpoppler-cpp-dev
 ```
+
+For a 64-bit build it's very important that you include libraspberrypi-dev because if this package is not installed then the file /usr/include/bcm_host.h is not present on the filesystem. This leads to CMake not detecting that it's indeed a Raspberry Pi and it will attempt to make a regular Linux build instead.
 
 To build with CEC support you also need to install these packages:
 ```
@@ -1780,6 +1782,20 @@ Here are some examples to clarify how this works:
 %EXTRA_ROM%=%ROM%
 %EXTRA_bootPath%=%ROMSAF%
 %EXTRABOOL_resumeState%=false
+```
+
+`%ANDROIDAPP%` - This is a special variable that is used to launch native Android apps and games. It must be defined as a pair separated by an equal sign. Most commonly it will be combined with the `%FILEINJECT%` variable which will inject the content of the game file, but it's also possible to define an explicit package name after the equal sign. Additionally you can specify which activity to use by adding it after a forward slash character. If no activity is defined then the default for the package will be used. The content of the inject file should look identical to an explicit entry, i.e. it can be just the package name or the package name and the activity.
+
+Here are some examples to clarify how this works:
+```
+%ANDROIDAPP%=%FILEINJECT%
+%ANDROIDAPP%=org.ppsspp.ppssppgold
+%ANDROIDAPP%=org.ppsspp.ppssppgold/org.ppsspp.ppsspp.PpssppActivity
+```
+
+The content of an inject file could look simply like the following:
+```
+org.ppsspp.ppssppgold
 ```
 
 There is also support for a couple of activity flags that affect the emulator/game launch behavior, you can read more about these flags here:\

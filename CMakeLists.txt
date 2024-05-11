@@ -19,7 +19,7 @@ endif()
 project(es-de)
 
 # Application version, update this when making a new release.
-set(ES_VERSION 3.0.1)
+set(ES_VERSION 3.0.2)
 
 # Set this to ON to show verbose compiler output (e.g. compiler flags, include directories etc.)
 set(CMAKE_VERBOSE_MAKEFILE OFF CACHE BOOL "Show verbose compiler output" FORCE)
@@ -392,6 +392,9 @@ if(ANDROID)
     if(ANDROID_ABI MATCHES arm64-v8a)
         message("-- Building for Android arm64-v8a on API level ${ANDROID_PLATFORM}")
         set(ANDROID_CPU_ARCH arm64-v8a)
+    elseif(ANDROID_ABI MATCHES armeabi-v7a)
+        message("-- Building for Android armeabi-v7a on API level ${ANDROID_PLATFORM}")
+        set(ANDROID_CPU_ARCH armeabi-v7a)
     elseif(ANDROID_ABI MATCHES x86_64)
         message("-- Building for Android x86_64 on API level ${ANDROID_PLATFORM}")
         set(ANDROID_CPU_ARCH x86_64)

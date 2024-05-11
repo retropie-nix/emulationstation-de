@@ -1,6 +1,6 @@
 //  SPDX-License-Identifier: MIT
 //
-//  ES-DE is a frontend for browsing and launching games from your multi-platform game collection.
+//  ES-DE is a frontend for browsing and launching games from your multi-platform collection.
 //
 //  The column limit is 100 characters.
 //  All ES-DE C++ source code is formatted using clang-format.
@@ -398,7 +398,7 @@ bool parseArguments(const std::vector<std::string>& arguments)
             std::cout <<
                 // clang-format off
 "Usage: es-de [options]\n"
-"ES-DE (ES-DE), Emulator Frontend\n\n"
+"ES-DE Frontend\n\n"
 "Options:\n"
 "  --display [1 to 4]                    Display/monitor to use\n"
 "  --resolution [width] [height]         Application resolution\n"
@@ -615,12 +615,12 @@ int main(int argc, char* argv[])
     // If ES-DE is set as the home app/launcher we may be in a situation where we get started
     // before the external storage has been mounted. If the application data directory or the
     // ROMs directory have been located on this storage then the configurator will get executed.
-    // To prevent the likelyhood of this happening we wait up to 40 * 100 milliseconds, then
+    // To prevent the likelyhood of this happening we wait up to 45 * 100 milliseconds, then
     // we give up. This is not an airtight solution but it hopefully decreases the risk of
     // this failure occuring. Under normal circumstances the storage would be mounted when
     // the application is starting, so no delay would occur.
     if (SDL_AndroidGetExternalStorageState() == 0) {
-        for (int i {0}; i < 40; ++i) {
+        for (int i {0}; i < 45; ++i) {
             __android_log_print(ANDROID_LOG_VERBOSE, ANDROID_APPLICATION_ID,
                                 "Storage not mounted, waiting 100 ms until next attempt");
             SDL_Delay(100);
@@ -744,7 +744,12 @@ int main(int argc, char* argv[])
             // Create the settings folder in the application data directory.
             const std::string settingsDir {Utils::FileSystem::getAppDataDirectory() + "/settings"};
             if (!Utils::FileSystem::isDirectory(settingsDir)) {
+#if defined(_WIN64)
+                LOG(LogInfo) << "Creating settings directory \""
+                             << Utils::String::replace(settingsDir, "/", "\\") << "\"...";
+#else
                 LOG(LogInfo) << "Creating settings directory \"" << settingsDir << "\"...";
+#endif
                 Utils::FileSystem::createDirectory(settingsDir);
                 if (!Utils::FileSystem::isDirectory(settingsDir)) {
                     LOG(LogError) << "Couldn't create directory, permission problems?";
@@ -819,9 +824,31 @@ int main(int argc, char* argv[])
         // Create the gamelists folder in the application data directory.
         const std::string gamelistsDir {Utils::FileSystem::getAppDataDirectory() + "/gamelists"};
         if (!Utils::FileSystem::exists(gamelistsDir)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating gamelists directory \""
+                         << Utils::String::replace(gamelistsDir, "/", "\\") << "\"...";
+#else
             LOG(LogInfo) << "Creating gamelists directory \"" << gamelistsDir << "\"...";
+#endif
             Utils::FileSystem::createDirectory(gamelistsDir);
             if (!Utils::FileSystem::exists(gamelistsDir)) {
+                LOG(LogWarning) << "Couldn't create directory, permission problems?";
+            }
+        }
+    }
+
+    {
+        // Create the game media folder.
+        const std::string mediaDirectory {FileData::getMediaDirectory()};
+        if (!Utils::FileSystem::exists(mediaDirectory)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating game media directory \""
+                         << Utils::String::replace(mediaDirectory, "/", "\\") << "\"...";
+#else
+            LOG(LogInfo) << "Creating game media directory \"" << mediaDirectory << "\"...";
+#endif
+            Utils::FileSystem::createDirectory(mediaDirectory);
+            if (!Utils::FileSystem::exists(mediaDirectory)) {
                 LOG(LogWarning) << "Couldn't create directory, permission problems?";
             }
         }
@@ -861,8 +888,12 @@ int main(int argc, char* argv[])
             userThemeDirectory = userThemeDirSetting;
 
         if (!Utils::FileSystem::exists(userThemeDirectory)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating themes directory \""
+                         << Utils::String::replace(userThemeDirectory, "/", "\\") << "\"...";
+#else
             LOG(LogInfo) << "Creating themes directory \"" << userThemeDirectory << "\"...";
-
+#endif
             Utils::FileSystem::createDirectory(userThemeDirectory);
             if (!Utils::FileSystem::exists(userThemeDirectory)) {
                 LOG(LogWarning) << "Couldn't create directory, permission problems?";
@@ -891,7 +922,12 @@ int main(int argc, char* argv[])
         // for custom event scripts so it's also created as a convenience.
         const std::string scriptsDir {Utils::FileSystem::getAppDataDirectory() + "/scripts"};
         if (!Utils::FileSystem::exists(scriptsDir)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating scripts directory \""
+                         << Utils::String::replace(scriptsDir, "/", "\\") << "\"...";
+#else
             LOG(LogInfo) << "Creating scripts directory \"" << scriptsDir << "\"...";
+#endif
             Utils::FileSystem::createDirectory(scriptsDir);
             if (!Utils::FileSystem::exists(scriptsDir)) {
                 LOG(LogWarning) << "Couldn't create directory, permission problems?";
@@ -906,7 +942,12 @@ int main(int argc, char* argv[])
         const std::string slideshowDir {Utils::FileSystem::getAppDataDirectory() +
                                         "/screensavers/custom_slideshow"};
         if (!Utils::FileSystem::exists(screensaversDir)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating screensavers directory \""
+                         << Utils::String::replace(screensaversDir, "/", "\\") << "\"...";
+#else
             LOG(LogInfo) << "Creating screensavers directory \"" << screensaversDir << "\"...";
+#endif
             Utils::FileSystem::createDirectory(screensaversDir);
             if (!Utils::FileSystem::exists(screensaversDir)) {
                 LOG(LogWarning) << "Couldn't create directory, permission problems?";
@@ -923,7 +964,12 @@ int main(int argc, char* argv[])
         }
 #endif
         if (!Utils::FileSystem::exists(slideshowDir)) {
+#if defined(_WIN64)
+            LOG(LogInfo) << "Creating custom_slideshow directory \""
+                         << Utils::String::replace(slideshowDir, "/", "\\") << "\"...";
+#else
             LOG(LogInfo) << "Creating custom_slideshow directory \"" << slideshowDir << "\"...";
+#endif
             Utils::FileSystem::createDirectory(slideshowDir);
             if (!Utils::FileSystem::exists(slideshowDir)) {
                 LOG(LogWarning) << "Couldn't create directory, permission problems?";
@@ -937,7 +983,12 @@ int main(int argc, char* argv[])
             const std::string controllersDir {Utils::FileSystem::getAppDataDirectory() +
                                               "/controllers"};
             if (!Utils::FileSystem::exists(controllersDir)) {
+#if defined(_WIN64)
+                LOG(LogInfo) << "Creating controllers directory \""
+                             << Utils::String::replace(controllersDir, "/", "\\") << "\"...";
+#else
                 LOG(LogInfo) << "Creating controllers directory \"" << controllersDir << "\"...";
+#endif
                 Utils::FileSystem::createDirectory(controllersDir);
                 if (!Utils::FileSystem::exists(controllersDir)) {
                     LOG(LogWarning) << "Couldn't create directory, permission problems?";
@@ -1121,6 +1172,8 @@ int main(int argc, char* argv[])
 #if defined(APPLICATION_UPDATER)
         if (ApplicationUpdater::getInstance().getResults())
             ViewController::getInstance()->updateAvailableDialog();
+        else
+            HttpReq::cleanupCurlMulti();
 #endif
 
 #if defined(_WIN64)

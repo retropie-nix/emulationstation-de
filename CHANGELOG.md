@@ -1,4 +1,43 @@
-# ES-DE (EmulationStation Desktop Edition) - Changelog
+# ES-DE Frontend - Changelog
+
+## Version 3.0.2 / 3.0.2-xx (in development)
+
+**Release date:** TBD
+
+### Release overview
+
+### Detailed list of changes
+
+* Improved multithreading for the network code which significantly increases scraping speed under some circumstances
+* Added Lime3DS standalone as an alternative emulator for the n3ds system
+* (Linux) Added the native release of BigPEmu standalone as an alternative emulator for the atarijaguar system
+* (Linux) Added the native release of BigPEmu standalone as the default emulator for the atarijaguarcd system
+* Added the MAME 2003 RetroArch core as an alternative emulator for the arcade, cps, cps1, cps2, cps3 and mame systems
+* (Android) Added Yaba Sanshiro 2 standalone as an alternative emulator for the saturn and saturnjp systems
+* (Android) Changed from %ROMPROVIDER% to %ROMSAF% for MD.emu (only for megacd, megacdjp and segacd)
+* (Android) Added support for the Antutu build of Citra MMJ
+* (Android) Added a "Back button/back swipe exits app" menu option
+* (Android) Increased the maximum waiting time for the storage mount retry loop from 4 to 4.5 seconds
+* Changed the supported file extensions for the cdtv system to be the same as for the amiga systems
+* Added the .car file extension to the atarixe system
+* The game media directory is now created on application startup instead of when first starting the scraper
+* (Linux/Unix) Changed the application summary from "Emulator Frontend" to "Gaming Frontend"
+* (Windows) Changed some log entries to use backslashes instead of forward slashes as directory separators
+* Changed the application description to "ES-DE Frontend" for the -h/--help command line option
+* Added support for marking themes as deprecated in the theme downloader
+* Added support for the androidapps and androidgames systems to the Linear, Modern and Slate themes
+* (modern-es-de) Converted all carousel icons from JPG to WebP format
+* Added a User-Agent string when making non-scraper HTTP requests
+* Added support for building against libgit2 v1.8.0 and later
+* Updated SDL to 2.30.2 on Android, Windows, macOS and the Linux AppImage builds
+* (Windows) Updated OpenSSL to 3.3.0
+* Updated the MAME index files to include ROMs up to MAME version 0.265
+* Bundled the March 2024 release of the Mozilla TLS/SSL certificates
+
+### Bug fixes
+
+* On Android 10 the Orphaned data cleanup utility removed media files which should not have been removed
+* The application couldn't be built with an older SDL release than 2.0.14
 
 ## Version 3.0.1 / 3.0.1-19
 

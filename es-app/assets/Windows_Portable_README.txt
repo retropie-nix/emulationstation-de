@@ -1,8 +1,8 @@
-ES-DE (EmulationStation Desktop Edition) - Portable installation on Windows
----------------------------------------------------------------------------
+ES-DE Frontend - Portable installation on Windows
+-------------------------------------------------
 
 ES-DE release:
-3.0.1
+3.0.2
 
 The latest version can be downloaded from https://es-de.org
 
@@ -80,6 +80,7 @@ Emulators\gopher2600\gopher2600_windows_amd64.exe
 Emulators\hatari\hatari.exe
 Emulators\Hypseus Singe\hypseus.exe
 Emulators\KEmulator\KEmulator.exe
+Emulators\lime-qt\lime-qt.exe
 Emulators\m2emulator\EMULATOR.EXE
 Emulators\mame\mame.exe
 Emulators\mednafen\mednafen.exe
