@@ -55,14 +55,13 @@ Some emulators like RetroArch are still using an older storage access method and
 
 The following emulators are configured for FileProvider access:
 * 2600.emu
+* DroidArcadia
 * FPseNG (still needs scoped storage to be setup in emulator)
 * FPse (still needs scoped storage to be setup in emulator)
 * GBA.emu
 * GBC.emu
 * Lynx.emu
-* MD.emu
-* MAME4droid 2024
-* MAME4droid
+* MD.emu (genesis, mastersystem, megadrive, megadrivejp)
 * NES.emu
 * NGP.emu
 * PCE.emu (pcengine, supergrafx and tg16 systems)
@@ -187,9 +186,10 @@ Below are specific instructions and considerations for all supported emulators.
 
 ### RetroArch
 
-The RetroArch release from the Google Play store is problematic. It does not contain all emulator cores and a number of people have reported issues launching games from ES-DE (apparently it doesn't work at all on some devices). For these reasons it's strongly recommended to use the 64-bit release from the RetroArch website instead, or to install it from the Amazon Appstore or the F-Droid store.
+The RetroArch release from the Google Play store is problematic. It does not contain all emulator cores and a number of people have reported issues launching games from ES-DE (apparently it doesn't work at all on some devices). For these reasons it's strongly recommended to use the 64-bit release from the RetroArch website instead, or to install it from the Samsung Galaxy Store, Amazon Appstore or the F-Droid store.
 
 https://retroarch.com \
+https://galaxystore.samsung.com/detail/com.retroarch \
 https://www.amazon.com/dp/B09753XRVF \
 https://f-droid.org/en/packages/com.retroarch
 
@@ -225,7 +225,7 @@ The Play store version is somehow up to date and could be used, otherwise the F-
 
 https://play.google.com/store/apps/details?id=org.dolphinemu.dolphinemu \
 https://f-droid.org/en/packages/org.dolphinemu.dolphinemu \
-https://dolphin-emu.org/download/
+https://dolphin-emu.org/download
 
 ### Dolphin MMJR and MMJR2
 
@@ -349,7 +349,7 @@ https://github.com/mupen64plus-ae/mupen64plus-ae/actions
 
 ### My Boy! and My OldBoy!
 
-These emulators can be installed from the Play store as paid apps. There are also free/Lite versions availble for these emulators but they have not been updated in years and don't run on modern devices. As such they are not supported by ES-DE.
+These emulators can be installed from the Play store as paid apps. There are also free/Lite versions available for these emulators but they have not been updated in years and don't run on modern devices. As such they are not supported by ES-DE.
 
 https://play.google.com/store/apps/details?id=com.fastemulator.gba \
 https://play.google.com/store/apps/details?id=com.fastemulator.gbc
@@ -377,9 +377,13 @@ https://github.com/wheremyfoodat/Panda3DS/releases
 
 ### Pizza Boy GBA and Pizza Boy GBC
 
-The Pizza Boy GBA and Pizza Boy GBC emulators used to be available on the Play store but have since been taken down. There used to be Basic (free) versions and Pro (paid) versions. It's unclear what the status is for these emulators and if they are still in active development. It's also unclear where they can be downloaded.
+The Pizza Boy GBA and Pizza Boy GBC emulators can be installed from the Play store. There are Basic (free) versions and Pro (paid) versions available.
+As of writing this, the Basic version of the GBA emulator does not seem to be able to launch games from ES-DE, but the Pro version is working fine. Both the Basic and Pro versions of the GBC emulator are working correctly.
 
-As of writing this, the latest available Basic version of the GBA emulator does not seem to be able to launch games from ES-DE, but the Pro version is working fine. Both the Basic and Pro versions of the GBC emulator are working correctly.
+https://play.google.com/store/apps/details?id=it.dbtecno.pizzaboygba \
+https://play.google.com/store/apps/details?id=it.dbtecno.pizzaboygbapro \
+https://play.google.com/store/apps/details?id=it.dbtecno.pizzaboy \
+https://play.google.com/store/apps/details?id=it.dbtecno.pizzaboypro
 
 ### Play!
 
@@ -440,6 +444,12 @@ This PlayStation Vita emulator can be downloaded from their GitHub site. Refer t
 
 https://github.com/Vita3K/Vita3K-Android/releases
 
+### Yaba Sanshiro 2
+
+This emulator can be installed from the Play store. Note that only the paid Pro version supports game launching from ES-DE. Also note that .bin/.cue files can't be launched for the time being, only .chd files seem to work. This needs to be fixed in the emulator so nothing can be done in ES-DE to work around that limitation.
+
+https://play.google.com/store/apps/details?id=org.devmiyax.yabasanshioro2.pro
+
 ## Device compatibility
 
 This is clearly not a complete list of Android devices, but rather those we know have been tested with ES-DE and for which there is a known status.
@@ -447,6 +457,7 @@ This is clearly not a complete list of Android devices, but rather those we know
 | Manufacturer | Model                   | Android release | Supported | Known issues        | Comment                    |
 | :----------- | :---------------------- | :-------------- | :-------- | :------------------ | :------------------------- |
 | Abxylute     | One                     | 12              | Yes       | None                |                            |
+| Alldocube    | iPlay50 mini Pro        | 13              | Yes       | None                |                            |
 | Anbernic     | RG353V                  | 11              | Yes       | None                |                            |
 | Anbernic     | RG405M                  | 12              | Yes       | None                | Limited RAM capacity for this device makes it unsuitable for demanding themes and large game collections |
 | Anbernic     | RG405V                  | 12              | Yes       | None                | Limited RAM capacity for this device makes it unsuitable for demanding themes and large game collections |

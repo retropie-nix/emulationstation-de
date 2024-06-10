@@ -558,6 +558,8 @@ int main(int argc, char* argv[])
 
     std::locale::global(std::locale("C"));
 
+    SDL_SetHint(SDL_HINT_APP_NAME, "ES-DE");
+
 #if defined(__APPLE__)
     // This is a workaround to disable the incredibly annoying save state functionality in
     // macOS which forces a restore of the previous window state. The problem is that this
@@ -610,8 +612,6 @@ int main(int argc, char* argv[])
     // unusable in any emulator that is launched.
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
 
-    bool resetTouchOverlay {false};
-
     // If ES-DE is set as the home app/launcher we may be in a situation where we get started
     // before the external storage has been mounted. If the application data directory or the
     // ROMs directory have been located on this storage then the configurator will get executed.
@@ -637,9 +637,6 @@ int main(int argc, char* argv[])
 
         if (Utils::Platform::Android::checkConfigurationNeeded())
             exit(0);
-
-        // Always enable the touch overlay after running the configurator.
-        resetTouchOverlay = true;
     }
 
     Utils::Platform::Android::setDataDirectories();
@@ -701,6 +698,14 @@ int main(int argc, char* argv[])
         LOG(LogInfo) << applicationName << " " << PROGRAM_VERSION_STRING << "-"
                      << ANDROID_VERSION_CODE << " (r" << PROGRAM_RELEASE_NUMBER << "), built "
                      << PROGRAM_BUILT_STRING;
+
+        if (AndroidVariables::sIsHomeApp) {
+            LOG(LogInfo) << "Running as the Android home app";
+        }
+        else {
+            LOG(LogInfo) << "Running as a regular Android app";
+        }
+
 #else
         LOG(LogInfo) << applicationName << " " << PROGRAM_VERSION_STRING << " (r"
                      << PROGRAM_RELEASE_NUMBER << "), built " << PROGRAM_BUILT_STRING;
@@ -795,7 +800,8 @@ int main(int argc, char* argv[])
     }
 
 #if defined(__ANDROID__)
-    if (resetTouchOverlay) {
+    // Reset the touch overlay if at least the second screen of the configurator was reached.
+    if (AndroidVariables::sResetTouchOverlay) {
         Settings::getInstance()->setBool("InputTouchOverlay", true);
         Settings::getInstance()->saveFile();
     }

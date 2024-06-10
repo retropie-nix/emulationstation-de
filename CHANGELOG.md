@@ -1,5 +1,91 @@
 # ES-DE Frontend - Changelog
 
+## Version 3.0.3 / 3.0.3-xx (in development)
+
+**Release date:** TBD
+
+### Release overview
+
+This release adds support for a lot of systems on Android which brings this platform much closer to the desktop ports as far as system support is concerned. It also brings experimental support for setting ES-DE as the Android home app. Outside of Android a number of new features have been added to the theme engine, ES-DE can be now be built for KMS/direct framebuffer access on Linux and several new emulators have been added. A couple of bugs have been fixed as well, in addition to some other minor improvements.
+
+### Detailed list of changes
+
+* (Android) Added experimental support for running ES-DE as the home app
+* (Android) The touch overlay is no longer reset by the onboarding configurator unless the "Begin setup" button was pressed
+* (Linux) Added a DEINIT_ON_LAUNCH CMake build flag to support KMS/direct framebuffer access
+* Added support for the new Lime3DS binary names on Linux, macOS and Windows
+* (Linux) Added support for the Flatpak release of Lime3DS
+* (Android) Added support for the Apple II (apple2) game system
+* (Android) Added support for the Apple IIGS (apple2gs) game system
+* (Android) Added support for the Emerson Arcadia 2001 (arcadia) game system
+* (Android) Added support for the Acorn Archimedes (archimedes) game system
+* (Android) Added support for the Bally Astrocade (astrocde) game system
+* (Android) Added support for the Acorn Computers BBC Micro (bbcmicro) game system
+* (Android) Added support for the Tandy Color Computer (coco) game system
+* (Android) Added support for the Console Arcade Systems (consolearcade) game system
+* (Android) Added support for the VTech CreatiVision (crvision) game system
+* (Android) Added support for the Acorn Electron (electron) game system
+* (Android) Added support for the Emulators (emulators) game system
+* (Android) Added support for the Fujitsu FM-7 (fm7) game system
+* (Android) Added support for the Fujitsu FM Towns (fmtowns) game system
+* (Android) Added support for the Bit Corporation Gamate (gamate) game system
+* (Android) Added support for the Tiger Electronics Game.com (gamecom) game system
+* (Android) Added support for the Hartung Game Master (gmaster) game system
+* (Android) Added support for the Apple Macintosh (macintosh) game system
+* (Android) Added support for the Tangerine Computer Systems Oric (oric) game system
+* (Android) Added support for the Casio PV-1000 (pv1000) game system
+* (Android) Added support for the Epoch Super Cassette Vision (scv) game system
+* (Android) Added support for the Funtech Super A'Can (supracan) game system
+* (Android) Added support for the Texas Instruments TI-99 (ti99) game system
+* (Android) Added support for the Visual Pinball (vpinball) game system
+* (Android) Added support for the VTech V.Smile (vsmile) game system
+* (Android) Added support for the Infocom Z-machine (zmachine) game system
+* (Android) Added MAME4droid 2024 standalone as the default emulator for the adam, daphne and laserdisc systems
+* (Android) Added MAME4droid 2024 standalone as an alternative emulator for the amstradcpc, atari7800, atarijaguar and cdimono1 systems
+* (Android) Added MAME4droid 2024 standalone as an alternative emulator for the channelf, gx4000, intellivision and megaduck systems
+* (Android) Added MAME4droid 2024 standalone as an alternative emulator for the model2, neogeocd, neogeocdjp and odyssey2 systems
+* (Android) Added MAME4droid 2024 standalone as an alternative emulator for the supervision, vectrex, videopac and x68000 systems
+* (Android) Added MAME4droid 2024 Local Artwork standalone as an alternative emulator for the gameandwatch and lcdgames systems
+* (Android) Added MAME4droid 2024 [Diskette] standalone and MAME4droid 2024 [Tape] standalone as alternative emulators for the x1 system
+* (Android) Defined explicit ROM paths for MAME4droid 2024 for the arcade, cps, cps1, cps2, cps3, mame, neogeo and stv systems
+* (Android) Added ScummVM standalone as an alternative emulator for the scummvm system
+* (Android) Added IrataJaguar standalone as an alternative emulator for the atarijaguar system
+* (Android) Added the melonDS RetroArch core as an alternative emulator for the nds system
+* Added the MojoZork RetroArch core as the default emulator for the zmachine system
+* Added MAME standalone as the default emulator for the oric system on Linux, macOS and Windows
+* Added MAME [Cartridge] standalone and MAME [Tape] standalone as alternative emulator entries for the coco system
+* Added ACE-DL standalone as an alternative emulator for the amstradcpc system on Linux, macOS and Windows
+* Added ColEm standalone as an alternative emulator for the adam and colecovision systems on Linux and Windows
+* (Windows) Added WinArcadia standalone as an alternative emulator for the arcadia system
+* (Windows) Added XM6 Pro-68k standalone as an alternative emulator for the x68000 system
+* (Linux) Added XM6 Pro-68k Wine and XM6 Pro-68k Proton as alternative emulators for the x68000 system
+* Added the "-gameio joy" option to the MAME and MAME standalone alternative emulator entries for the apple2 and apple2gs systems
+* Added the "-analogue acornjoy" option to the MAME standalone emulator entry for the bbcmicro system
+* Added the .elf, .tmd and .wuhb file extensions to the wiiu system on Linux, macOS and Windows
+* Added support for combining a %ROM% variable with the %INJECT% variable
+* (Android) Added %GAMEDIRRAW%, %ROMPATHRAW% and %ROMRAW% variables that can be used with the %EXTRA% and %EXTRAARRAY% variables
+* (linear-es-de) Added startup slide animations to the default transitions animation profile
+* (linear-es-de) Changed system to system transitions from fade to instant for the fade animation profile
+* Added a "selectedItemOffset" property to the carousel element
+* Added a "selectedBackgroundMargins" property to the textlist element
+* Added a "selectedBackgroundCornerRadius" property to the textlist element
+* Added a "backgroundMargins" property to the text element
+* Added a "backgroundCornerRadius" property to the text element
+* Added an "imageCropPos" property to the carousel element
+* Added an "imageCropPos" property to the grid element
+* Added a "cropPos" property to the image element
+* Added a "cropPos" property to the video element
+* SDL_HINT_APP_NAME is now explicitly set to "ES-DE" to display the correct name in the OS sound settings interface and similar
+* (macOS) Changed the minimum required OS version from 10.15 "Catalina" to 11 "Big Sur"
+
+### Bug fixes
+
+* Adding trailing directory separators to the MediaDirectory setting could make the Orphaned data cleanup utility remove too many files
+* (Windows) Filenames containing multi-byte Unicode characters could not be used with the %INJECT% variable
+* The texture size was sometimes calculated incorrectly for the video element when using the cropSize property
+* Transition animations could sometimes partially play when switching themes with a system selected for the gamelist on startup setting
+* There could be minor textlist selector clipping issues if the selector had a text background color set
+
 ## Version 3.0.2 / 3.0.2-21
 
 **Release date:** 2024-05-13

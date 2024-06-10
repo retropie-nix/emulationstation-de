@@ -125,8 +125,8 @@
         <extension>.do .DO .dsk .DSK .nib .NIB .po .PO</extension>
         <command label="LinApple (Standalone)">%EMULATOR_LINAPPLE% -f -b --d1 %ROM%</command>
         <command label="Mednafen (Standalone)">%EMULATOR_MEDNAFEN% -force_module apple2 %ROM%</command>
-        <command label="MAME - Current">%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mame_libretro.so "apple2e -rompath \"%GAMEDIRRAW%;%ROMPATH%/apple2\" -flop1 \"%ROMRAW%\""</command>
-        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/apple2 apple2e -flop1 %ROM%</command>
+        <command label="MAME - Current">%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mame_libretro.so "apple2e -rompath \"%GAMEDIRRAW%;%ROMPATH%/apple2\" -gameio joy -flop1 \"%ROMRAW%\""</command>
+        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/apple2 apple2e -gameio joy -flop1 %ROM%</command>
         <platform>apple2</platform>
         <theme>apple2</theme>
     </system>
@@ -135,8 +135,8 @@
         <fullname>Apple IIGS</fullname>
         <path>%ROMPATH%/apple2gs</path>
         <extension>.2mg .2MG .7z .7z .zip .ZIP</extension>
-        <command label="MAME - Current">%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mame_libretro.so "apple2gs -rompath \"%GAMEDIRRAW%;%ROMPATH%/apple2gs\" -flop3 \"%ROMRAW%\""</command>
-        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/apple2gs apple2gs -flop3 %ROM%</command>
+        <command label="MAME - Current">%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mame_libretro.so "apple2gs -rompath \"%GAMEDIRRAW%;%ROMPATH%/apple2gs\" -gameio joy -flop3 \"%ROMRAW%\""</command>
+        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/apple2gs apple2gs -gameio joy -flop3 %ROM%</command>
         <platform>apple2gs</platform>
         <theme>apple2gs</theme>
     </system>
@@ -315,7 +315,7 @@
         <fullname>Acorn Computers BBC Micro</fullname>
         <path>%ROMPATH%/bbcmicro</path>
         <extension>.dsd .DSD .img .IMG .ssd .SSD .7z .7Z .zip .ZIP</extension>
-        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/bbcmicro bbcb -autoboot_delay "2" -autoboot_command "*cat\n\n*exec !boot\n" -flop1 %ROM%</command>
+        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/bbcmicro bbcb -autoboot_delay "2" -autoboot_command "*cat\n\n*exec !boot\n" -analogue acornjoy -flop1 %ROM%</command>
         <platform>bbcmicro</platform>
         <theme>bbcmicro</theme>
     </system>
@@ -383,6 +383,8 @@
         <extension>.cas .CAS .ccc .CCC .dsk .DSK .rom .ROM</extension>
         <command label="XRoar CoCo 2 NTSC (Standalone)">%EMULATOR_XROAR% -fs -default-machine coco2bus %ROM%</command>
         <command label="XRoar CoCo 2 PAL (Standalone)">%EMULATOR_XROAR% -fs -default-machine coco2b %ROM%</command>
+        <command label="MAME [Cartridge] (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/coco coco -cart %ROM%</command>
+        <command label="MAME [Tape] (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/coco coco -autoboot_delay "2" -autoboot_command "cloadm:exec\n" -cass %ROM%</command>
         <platform>coco</platform>
         <theme>coco</theme>
     </system>
@@ -1387,6 +1389,7 @@
         <fullname>Tangerine Computer Systems Oric</fullname>
         <path>%ROMPATH%/oric</path>
         <extension>.dsk .DSK .ort .ORT .tap .TAP .wav .WAV</extension>
+        <command label="MAME (Standalone)">%STARTDIR%=~/.mame %EMULATOR_MAME% -rompath %GAMEDIR%\;%ROMPATH%/oric oric1 -autoboot_delay "4" -autoboot_command "cload\"\"\n" -cass %ROM%</command>
         <command label="Oricutron (Standalone)">%STARTDIR%=%EMUDIR% %EMULATOR_ORICUTRON% %ROM%</command>
         <platform>oric</platform>
         <theme>oric</theme>
@@ -2116,7 +2119,7 @@
         <name>wiiu</name>
         <fullname>Nintendo Wii U</fullname>
         <path>%ROMPATH%/wiiu</path>
-        <extension>.rpx .RPX .wua .WUA .wud .WUD .wux .WUX</extension>
+        <extension>.elf .ELF .rpx .RPX .tmd .TMD .wua .WUA .wud .WUD .wuhb .WUHB .wux .WUX</extension>
         <command label="Cemu (Standalone)">%EMULATOR_CEMU% -g %ROM%</command>
         <platform>wiiu</platform>
         <theme>wiiu</theme>
@@ -2222,6 +2225,7 @@
         <fullname>Infocom Z-machine</fullname>
         <path>%ROMPATH%/zmachine</path>
         <extension>.dat .DAT .z1 .Z1 .z2 .Z2 .z3 .Z3 .z4 .Z4 .z5 .Z5 .z6 .Z6 .z7 .Z7 .z8 .Z8 .zlb .ZLB .zblorb .ZBLORB</extension>
+        <command label="MojoZork">%EMULATOR_RETROARCH% -L %CORE_RETROARCH%/mojozork_libretro.so %ROM%</command>
         <command label="Gargoyle (Standalone)">%EMULATOR_GARGOYLE% %ROM%</command>
         <platform>zmachine</platform>
         <theme>zmachine</theme>

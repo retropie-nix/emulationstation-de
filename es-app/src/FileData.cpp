@@ -10,6 +10,7 @@
 
 #include "FileData.h"
 
+#include "AudioManager.h"
 #include "CollectionSystemsManager.h"
 #include "FileFilterIndex.h"
 #include "FileSorts.h"
@@ -1573,18 +1574,30 @@ void FileData::launchGame()
             injectFile = Utils::String::replace(injectFile, "\\", "/");
             injectFile = Utils::String::replace(injectFile, "%BASENAME%",
                                                 Utils::String::replace(baseName, "\"", ""));
-            if (injectFile.size() < 3 || !(injectFile[1] == ':' && injectFile[2] == '/'))
-                injectFile =
-                    Utils::FileSystem::getParent(Utils::String::replace(romPath, "\"", "")) + "/" +
-                    injectFile;
+            if (injectFile == "%ROM%") {
+                injectFile = Utils::String::replace(injectFile, "%ROM%",
+                                                    Utils::String::replace(romRaw, "\"", ""));
+            }
+            else {
+                if (injectFile.size() < 3 || !(injectFile[1] == ':' && injectFile[2] == '/'))
+                    injectFile =
+                        Utils::FileSystem::getParent(Utils::String::replace(romPath, "\"", "")) +
+                        "/" + injectFile;
+            }
             injectFile = Utils::String::replace(injectFile, "/", "\\");
 #else
             injectFile = Utils::String::replace(injectFile, "%BASENAME%",
                                                 Utils::String::replace(baseName, "\\", ""));
-            if (injectFile.front() != '/')
-                injectFile =
-                    Utils::FileSystem::getParent(Utils::String::replace(romPath, "\\", "")) + "/" +
-                    injectFile;
+            if (injectFile == "%ROM%") {
+                injectFile = Utils::String::replace(injectFile, "%ROM%",
+                                                    Utils::String::replace(romRaw, "\\", ""));
+            }
+            else {
+                if (injectFile.front() != '/')
+                    injectFile =
+                        Utils::FileSystem::getParent(Utils::String::replace(romPath, "\\", "")) +
+                        "/" + injectFile;
+            }
 #endif
             if (Utils::FileSystem::isRegularFile(injectFile) ||
                 Utils::FileSystem::isSymlink(injectFile)) {
@@ -1592,7 +1605,11 @@ void FileData::launchGame()
                               << "\"";
                 std::string arguments;
                 std::ifstream injectFileStream;
+#if defined(_WIN64)
+                injectFileStream.open(Utils::String::stringToWideString(injectFile));
+#else
                 injectFileStream.open(injectFile);
+#endif
                 for (std::string line; getline(injectFileStream, line);) {
                     // Remove Windows carriage return characters.
                     line = Utils::String::replace(line, "\r", "");
@@ -1738,6 +1755,10 @@ void FileData::launchGame()
                                      Utils::FileSystem::getEscapedPath(getROMDirectory()));
 #else
     command = Utils::String::replace(command, "%ANDROIDPACKAGE%", androidPackage);
+    // Escaped quotation marks should only be used for Extras on Android so it should be safe to
+    // just change them to temporary variables and convert them back to the escaped quotation
+    // marks when parsing the Extras.
+    command = Utils::String::replace(command, "\\\"", "%QUOTATION%");
 
     const std::vector<std::string> androidVariabels {
         "%ACTION%=", "%CATEGORY%=", "%MIMETYPE%=", "%DATA%="};
@@ -1845,6 +1866,21 @@ void FileData::launchGame()
                     }
 
                     if (extraName != "" && extraValue != "") {
+                        // Expand the unescaped game directory path and ROM directory as well as
+                        // the raw path to the game file if the corresponding variables have been
+                        // used in the Extra definition. We also change back any temporary quotation
+                        // mark variables to actual escaped quotation marks so they can be passed
+                        // in the Intent.
+                        extraValue = Utils::String::replace(extraValue, "%QUOTATION%", "\\\"");
+                        extraValue =
+                            Utils::String::replace(extraValue, "%GAMEDIRRAW%",
+                                                   Utils::FileSystem::getParent(
+                                                       Utils::String::replace(romPath, "\\", "")));
+                        extraValue =
+                            Utils::String::replace(extraValue, "%ROMPATHRAW%", getROMDirectory());
+                        extraValue = Utils::String::replace(extraValue, "%ROMRAW%", romRaw);
+                        extraValue = Utils::String::replace(extraValue, "//", "/");
+
                         if (variable == "%EXTRA_")
                             androidExtrasString[extraName] = extraValue;
                         else if (variable == "%EXTRAARRAY_")
@@ -1894,6 +1930,10 @@ void FileData::launchGame()
 
     // Trim any leading and trailing whitespace characters as they could cause launch issues.
     command = Utils::String::trim(command);
+
+#if defined(DEINIT_ON_LAUNCH)
+    runInBackground = false;
+#endif
 
     // swapBuffers() is called here to turn the screen black to eliminate some potential
     // flickering and to avoid showing the game launch message briefly when returning
@@ -1966,7 +2006,18 @@ void FileData::launchGame()
         androidData, mEnvData->mStartPath, romRaw, androidExtrasString, androidExtrasStringArray,
         androidExtrasBool, androidActivityFlags);
 #else
+
+#if defined(DEINIT_ON_LAUNCH)
+// Deinit both the AudioManager and the window which allows emulators to launch in KMS mode.
+AudioManager::getInstance().deinit();
+window->deinit();
+returnValue = Utils::Platform::launchGameUnix(command, startDirectory, false);
+AudioManager::getInstance().init();
+window->init();
+#else
 returnValue = Utils::Platform::launchGameUnix(command, startDirectory, runInBackground);
+#endif
+
 #endif
     // Notify the user in case of a failed game launch using a popup window.
     if (returnValue != 0) {
