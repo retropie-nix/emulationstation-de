@@ -528,12 +528,14 @@ float Font::getSizeReference()
 
     FT_Face* face {getFaceForChar('A', &returnedFont)};
     if (!face) {
-        // This is completely inaccurate but it should hopefully never happen.
-        return static_cast<float>(mMaxGlyphHeight * 16);
+        // This is completely inaccurate but it should hopefully never happen as all fonts
+        // should contain the Latin capital letters.
+        mSizeReference = static_cast<float>(mMaxGlyphHeight * 16);
+        return mSizeReference;
     }
 
     // We don't check the face for each character, we just assume that if the font includes
-    // the 'A' character it also includes the other Latin capital letters.
+    // the "A" character it also includes the other Latin capital letters.
     for (auto character : includeChars) {
         if (!fontError) {
             const FT_GlyphSlot glyphSlot {(*face)->glyph};
@@ -545,6 +547,12 @@ float Font::getSizeReference()
     }
 
     mSizeReference = static_cast<float>(advance);
+
+    // This can happen if the font is broken and contains glyphs for the Latin capital
+    // letters, but where the slots are blank and as such contain no size information.
+    if (mSizeReference == 0.0f)
+        mSizeReference = static_cast<float>(mMaxGlyphHeight * 16);
+
     return mSizeReference;
 }
 
