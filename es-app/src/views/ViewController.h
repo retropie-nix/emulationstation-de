@@ -45,6 +45,9 @@ public:
     // Caches things so there's no pauses during transitions.
     void preload();
 
+    // Launch a game with a specific launch preset, used by GuiLaunchPresets.
+    void launchGameWithPreset(FileData* game, const std::string& label);
+
     // If a basic view detected a metadata change, it can request to recreate
     // the current gamelist view (as it may change to be detailed).
     void reloadGamelistView(GamelistView* gamelist, bool reloadTheme = false);
@@ -98,7 +101,6 @@ public:
     void triggerGameLaunch(FileData* game)
     {
         mGameToLaunch = game;
-        mWindow->setBlockInput(true);
     };
     const bool getGameLaunchTriggered() { return (mGameToLaunch != nullptr); }
 
@@ -177,6 +179,7 @@ private:
     ViewController() noexcept;
 
     void launch(FileData* game);
+    void doLaunch(FileData* game, const std::string& label);
 
     Renderer* mRenderer;
     std::string mNoGamesErrorMessage;
@@ -196,6 +199,10 @@ private:
     ViewTransitionAnimation mLastTransitionAnim;
 
     FileData* mGameToLaunch;
+    FileData* mSplashGame {nullptr};
+    int mSplashTimer {0};
+    int mSplashDuration {0};
+    bool mSplashActive {false};
     State mState;
 
     glm::mat4 mCamera;

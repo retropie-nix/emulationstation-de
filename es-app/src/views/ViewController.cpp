@@ -30,6 +30,7 @@
 #include "animations/MoveCameraAnimation.h"
 #include "guis/GuiApplicationUpdater.h"
 #include "guis/GuiGameImporter.h"
+#include "guis/GuiLaunchPresets.h"
 #include "guis/GuiMenu.h"
 #include "guis/GuiTextEditKeyboardPopup.h"
 #include "guis/GuiTextEditPopup.h"
@@ -1066,25 +1067,49 @@ void ViewController::launch(FileData* game)
     NavigationSounds::getInstance().playThemeNavigationSound(LAUNCHSOUND);
 #endif
 
-    // This is just a dummy animation in order for the launch screen or notification popup
-    // to be displayed briefly, and for the navigation sound playing to be able to complete.
-    // During this time period, all user input is blocked.
-    setAnimation(new LambdaAnimation([](float t) {}, duration), 0, [this, game] {
-        game->launchGame();
+    // The launch splash is interruptible: pressing a button opens the launch preset
+    // selection instead of launching the default preset, see input().
+    mSplashGame = game;
+    mSplashTimer = 0;
+    mSplashDuration = duration;
+    mSplashActive = (duration > 0);
+
+    if (!mSplashActive)
+        doLaunch(game, "");
+}
+
+void ViewController::doLaunch(FileData* game, const std::string& label)
+{
+    mSplashActive = false;
+    mSplashGame = nullptr;
+
+    mWindow->setGameLaunched(game);
+    game->launchGame(label);
+
 #if defined(__ANDROID__)
-        AudioManager::getInstance().stop();
+    AudioManager::getInstance().stop();
 #else
-        if (!Settings::getInstance()->getBool("RunInBackground"))
-            AudioManager::getInstance().stop();
+    if (!Settings::getInstance()->getBool("RunInBackground"))
+        AudioManager::getInstance().stop();
 #endif
-        // If the launch screen is disabled then this will do nothing.
-        mWindow->closeLaunchScreen();
-        onFileChanged(game, true);
-        // This is a workaround so that any keys or button presses used for exiting the emulator
-        // are not captured upon returning.
-        setAnimation(new LambdaAnimation([](float t) {}, 1), 0,
-                     [this] { mWindow->setBlockInput(false); });
-    });
+
+    // If the launch screen is disabled then this will do nothing.
+    mWindow->closeLaunchScreen();
+    onFileChanged(game, true);
+    // This is a workaround so that any keys or button presses used for exiting the emulator
+    // are not captured upon returning.
+    mWindow->setBlockInput(false);
+}
+
+void ViewController::launchGameWithPreset(FileData* game, const std::string& label)
+{
+    mWindow->setAllowTextScrolling(false);
+    mWindow->setAllowFileAnimation(false);
+
+    stopAnimation(1);
+    mWindow->stopInfoPopup();
+
+    doLaunch(game, label);
 }
 
 void ViewController::removeGamelistView(SystemData* system)
@@ -1232,6 +1257,21 @@ std::shared_ptr<SystemView> ViewController::getSystemListView()
 
 bool ViewController::input(InputConfig* config, Input input)
 {
+    // During the launch splash a button press opens the launch preset selection instead of
+    // launching the default preset.
+    if (mSplashActive && mSplashGame != nullptr && input.value != 0 &&
+        (config->isMappedTo("a", input) || config->isMappedTo("b", input) ||
+         config->isMappedTo("start", input))) {
+        FileData* game {mSplashGame};
+
+        mSplashActive = false;
+        mSplashGame = nullptr;
+        mWindow->closeLaunchScreen();
+        mWindow->pushGui(new GuiLaunchPresets(game));
+
+        return true;
+    }
+
     // If using the %RUNINBACKGROUND% variable in a launch command or if enabling the
     // RunInBackground setting, ES-DE will run in the background while a game is launched.
     // If we're in this state and then register some input, it means that the user is back in ES-DE.
@@ -1326,9 +1366,15 @@ void ViewController::update(int deltaTime)
 
     updateSelf(deltaTime);
 
+    if (mSplashActive && mSplashGame != nullptr) {
+        mSplashTimer += deltaTime;
+
+        if (mSplashTimer >= mSplashDuration)
+            doLaunch(mSplashGame, "");
+    }
+
     if (mGameToLaunch) {
         launch(mGameToLaunch);
-        mWindow->setGameLaunched(mGameToLaunch);
         mGameToLaunch = nullptr;
     }
 }
