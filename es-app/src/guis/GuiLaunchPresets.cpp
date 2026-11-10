@@ -22,6 +22,21 @@ GuiLaunchPresets::GuiLaunchPresets(FileData* game)
     mMenu.addButton(_("BACK"), _("back"), [this] { delete this; });
 
     SystemEnvironmentData* envData {game->getSourceFileData()->getSystem()->getSystemEnvData()};
+
+    if (envData == nullptr || envData->mLaunchCommands.empty()) {
+        ComponentListRow row;
+        std::shared_ptr<TextComponent> emptyText {std::make_shared<TextComponent>(
+            ViewController::EXCLAMATION_CHAR + " " + _("NO LAUNCH PRESETS DEFINED"),
+            Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary, ALIGN_CENTER)};
+        row.addElement(emptyText, true);
+        mMenu.addRow(row);
+
+        setSize(mMenu.getSize());
+        setPosition((Renderer::getScreenWidth() - mSize.x) / 2.0f,
+                    Renderer::getScreenHeight() * 0.30f);
+        return;
+    }
+
     const std::string defaultLabel {game->getSourceFileData()->getDefaultLaunchPresetLabel()};
     const std::string firstLabel {envData->mLaunchCommands.front().second};
 
@@ -30,7 +45,7 @@ GuiLaunchPresets::GuiLaunchPresets(FileData* game)
 
         std::string label {entry.second.empty() ? _("DEFAULT") : entry.second};
 
-        if (!firstLabel.empty() && entry.second == firstLabel)
+        if (entry.second == firstLabel)
             label.append(" [").append(_("DEFAULT")).append("]");
         else if (!defaultLabel.empty() && entry.second == defaultLabel)
             label.append(" [").append(_("PREFERRED")).append("]");
@@ -39,16 +54,15 @@ GuiLaunchPresets::GuiLaunchPresets(FileData* game)
                                 (defaultLabel.empty() && entry.second == firstLabel)};
 
         std::shared_ptr<TextComponent> labelText {std::make_shared<TextComponent>(
-            label,
-            Font::get(FONT_SIZE_MEDIUM, isPreferred ? FONT_PATH_BOLD : FONT_PATH_REGULAR),
+            label, Font::get(FONT_SIZE_MEDIUM, isPreferred ? FONT_PATH_BOLD : FONT_PATH_REGULAR),
             mMenuColorPrimary, ALIGN_LEFT)};
         labelText->setSelectable(true);
         row.addElement(labelText, true);
 
         const std::string presetLabel {entry.second};
         row.makeAcceptInputHandler([this, game, presetLabel] {
-            delete this;
             ViewController::getInstance()->launchGameWithPreset(game, presetLabel);
+            delete this;
         });
 
         mMenu.addRow(row);
