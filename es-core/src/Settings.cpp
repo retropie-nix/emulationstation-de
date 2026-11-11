@@ -327,9 +327,6 @@ void Settings::setDefaults()
 #if !defined(__APPLE__) && !defined(__ANDROID__)
     mBoolMap["ShowQuitMenu"] = {false, false};
 
-    // Show a dedicated power menu instead of the quit entries. Intended for appliances where
-    // the frontend should never drop to a shell.
-    mBoolMap["PowerMenu"] = {false, false};
 #endif
 
     // Utilities -> Game Importer.
