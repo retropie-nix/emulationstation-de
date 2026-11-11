@@ -111,6 +111,10 @@ public:
     virtual void disconnect(const std::string& devicePath) = 0;
     virtual void forget(const std::string& devicePath) = 0;
 
+    // Pairing mode, which the Bluetooth screen turns on while it is open. With a backend it
+    // registers the pairing agent and keeps the adapter pairable; without one it does nothing.
+    virtual void setPairingEnabled(const bool enabled) = 0;
+
 protected:
     BluetoothManager() = default;
 };

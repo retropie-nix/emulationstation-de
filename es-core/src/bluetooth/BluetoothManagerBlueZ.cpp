@@ -41,6 +41,14 @@ namespace
     constexpr const char* sPropertiesInterface {"org.freedesktop.DBus.Properties"};
     constexpr const char* sAdapterInterface {"org.bluez.Adapter1"};
     constexpr const char* sDeviceInterface {"org.bluez.Device1"};
+    constexpr const char* sAgentInterface {"org.bluez.Agent1"};
+    constexpr const char* sAgentManagerInterface {"org.bluez.AgentManager1"};
+    constexpr const char* sAgentManagerPath {"/org/bluez"};
+    constexpr const char* sAgentPath {"/org/es_de/BluetoothAgent"};
+    // Nothing is displayed and nothing is typed on an appliance with a game controller.
+    constexpr const char* sAgentCapability {"NoInputNoOutput"};
+    // bluetoothd clears Pairable by itself after this many seconds.
+    constexpr std::uint32_t sPairableTimeout {180};
 
     // Reads one D-Bus variant into the reduced property representation. Returns false when the
     // value type is not one of the supported ones, in which case the caller skips it.
@@ -306,7 +314,12 @@ namespace
             connected,
             disconnected,
             removed,
-            removedCleanup
+            removedCleanup,
+            agentRegistered,
+            agentDefault,
+            agentUnregistered,
+            pairableSet,
+            pairableTimeoutSet
         };
 
         // What a completion callback needs besides the reply itself.
@@ -327,12 +340,15 @@ namespace
                 pair,
                 connect,
                 disconnect,
-                forget
+                forget,
+                setPairingEnabled
             };
 
             Type type {Type::refresh};
             std::string path;
-            bool powered {false};
+            // The boolean argument of the command: the state for setPowered and
+            // setPairingEnabled, unused for everything else.
+            bool state {false};
         };
 
     public:
@@ -403,6 +419,11 @@ namespace
             postCommand({Command::Type::forget, devicePath, false});
         }
 
+        void setPairingEnabled(const bool enabled) override
+        {
+            postCommand({Command::Type::setPairingEnabled, std::string {}, enabled});
+        }
+
     private:
         void run()
         {
@@ -434,6 +455,9 @@ namespace
             if (result < 0) {
                 LOG(LogError) << "Bluetooth: the event loop failed: " << std::strerror(-result);
             }
+
+            if (mAgentSlot != nullptr)
+                mAgentSlot = sd_bus_slot_unref(mAgentSlot);
 
             if (mBus != nullptr) {
                 sd_bus_flush(mBus);
@@ -550,6 +574,11 @@ namespace
             if (!hasAdapter())
                 return;
 
+            // Scanning while the screen is open is a good moment for a device to pair, and every
+            // scan restarts the pairable timeout.
+            if (mPairingEnabled)
+                setPairable(true);
+
             sd_bus_message* message {nullptr};
             if (sd_bus_message_new_method_call(mBus,
                                                &message,
@@ -587,6 +616,9 @@ namespace
         {
             if (!beginOperation(devicePath, BluetoothOp::pairing))
                 return;
+
+            if (mPairingEnabled)
+                setPairable(true);
 
             // Paging fails often while the adapter is still inquiring on these combo chips.
             if (mDiscovering) {
@@ -670,26 +702,49 @@ namespace
             }
         }
 
-        // BlueZ only consults a pairing agent for a device it does not trust yet, and a controller
-        // opens its HID channel right after pairing, before any later SetTrusted could run.
-        void setTrusted(const std::string& devicePath)
+        // Starts a Properties.Set call for one property, the caller appends the value.
+        sd_bus_message* newPropertySet(const std::string& objectPath,
+                                       const char* interfaceName,
+                                       const char* name)
         {
             sd_bus_message* message {nullptr};
             if (sd_bus_message_new_method_call(mBus,
                                                &message,
                                                sBlueZService,
-                                               devicePath.c_str(),
+                                               objectPath.c_str(),
                                                sPropertiesInterface,
-                                               "Set") < 0) {
+                                               "Set") < 0)
+                return nullptr;
+
+            sd_bus_message_append(message, "ss", interfaceName, name);
+            return message;
+        }
+
+        static void appendBooleanVariant(sd_bus_message* message, const bool value)
+        {
+            sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "b");
+            sd_bus_message_append(message, "b", value ? 1 : 0);
+            sd_bus_message_close_container(message);
+        }
+
+        static void appendUnsignedVariant(sd_bus_message* message, const std::uint32_t value)
+        {
+            sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "u");
+            sd_bus_message_append(message, "u", value);
+            sd_bus_message_close_container(message);
+        }
+
+        // BlueZ only consults a pairing agent for a device it does not trust yet, and a controller
+        // opens its HID channel right after pairing, before any later SetTrusted could run.
+        void setTrusted(const std::string& devicePath)
+        {
+            sd_bus_message* message {newPropertySet(devicePath, sDeviceInterface, "Trusted")};
+            if (message == nullptr) {
                 finishOperation(devicePath, true, "Could not reach the Bluetooth service");
                 return;
             }
 
-            sd_bus_message_append(message, "ss", sDeviceInterface, "Trusted");
-            sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "b");
-            sd_bus_message_append(message, "b", 1);
-            sd_bus_message_close_container(message);
-
+            appendBooleanVariant(message, true);
             sendCall(message, Step::trusted, devicePath);
         }
 
@@ -764,8 +819,12 @@ namespace
             }
         }
 
-        // Sends a method call message that was built with arguments.
-        void sendCall(sd_bus_message* message, const Step step, const std::string& devicePath)
+        // Sends a method call message that was built with arguments. The pairing setup calls do
+        // not report failures to the user, a pair that cannot happen shows up as a failed pair.
+        void sendCall(sd_bus_message* message,
+                      const Step step,
+                      const std::string& devicePath,
+                      const bool reportFailure = true)
         {
             auto* followUp {new FollowUp {step, devicePath, this}};
 
@@ -775,7 +834,13 @@ namespace
 
             if (result < 0) {
                 delete followUp;
-                finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+                if (reportFailure) {
+                    finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+                }
+                else {
+                    LOG(LogWarning) << "Bluetooth: could not send a pairing setup call: "
+                                    << std::strerror(-result);
+                }
             }
         }
 
@@ -837,6 +902,25 @@ namespace
                                followUp.devicePath);
                     break;
 
+                case Step::agentRegistered:
+                    if (failed) {
+                        LOG(LogWarning) << "Bluetooth: could not register the pairing agent: "
+                                        << error;
+                    }
+                    else {
+                        mAgentRegistered = true;
+                    }
+                    break;
+
+                case Step::agentDefault:
+                case Step::agentUnregistered:
+                case Step::pairableSet:
+                case Step::pairableTimeoutSet:
+                    if (failed) {
+                        LOG(LogWarning) << "Bluetooth: a pairing setup call failed: " << error;
+                    }
+                    break;
+
                 case Step::paired:
                     if (!failed) {
                         finishOperation(followUp.devicePath, false, error);
@@ -850,6 +934,263 @@ namespace
             }
         }
 
+
+        //------------------------------------------------------------------------------------------
+        // Pairing agent. Everything below runs on the loop thread.
+
+        void performSetPairingEnabled(const bool enabled)
+        {
+            if (mPairingEnabled == enabled)
+                return;
+
+            mPairingEnabled = enabled;
+
+            if (enabled)
+                registerAgent();
+            else
+                unregisterAgent();
+        }
+
+        void registerAgent()
+        {
+            if (!hasAdapter())
+                return;
+
+            // The agent object lives on this connection, so it only has to be published once.
+            if (mAgentSlot == nullptr) {
+                const int result {sd_bus_add_object_vtable(mBus,
+                                                           &mAgentSlot,
+                                                           sAgentPath,
+                                                           sAgentInterface,
+                                                           agentVTable(),
+                                                           this)};
+                if (result < 0) {
+                    LOG(LogWarning) << "Bluetooth: could not publish the pairing agent: "
+                                    << std::strerror(-result);
+                    mAgentSlot = nullptr;
+                    return;
+                }
+            }
+
+            sd_bus_message* message {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &message,
+                                               sBlueZService,
+                                               sAgentManagerPath,
+                                               sAgentManagerInterface,
+                                               "RegisterAgent") == 0) {
+                sd_bus_message_append(message, "os", sAgentPath, sAgentCapability);
+                sendCall(message, Step::agentRegistered, std::string {}, false);
+            }
+
+            sd_bus_message* defaultMessage {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &defaultMessage,
+                                               sBlueZService,
+                                               sAgentManagerPath,
+                                               sAgentManagerInterface,
+                                               "RequestDefaultAgent") == 0) {
+                sd_bus_message_append(defaultMessage, "o", sAgentPath);
+                sendCall(defaultMessage, Step::agentDefault, std::string {}, false);
+            }
+
+            setPairable(true);
+        }
+
+        void unregisterAgent()
+        {
+            if (mBus == nullptr)
+                return;
+
+            // bluetoothd forgets the registration when it restarts and Release tells us when it
+            // dropped us, so only unregister while it still knows about the agent.
+            if (mAgentRegistered) {
+                sd_bus_message* message {nullptr};
+                if (sd_bus_message_new_method_call(mBus,
+                                                   &message,
+                                                   sBlueZService,
+                                                   sAgentManagerPath,
+                                                   sAgentManagerInterface,
+                                                   "UnregisterAgent") == 0) {
+                    sd_bus_message_append(message, "o", sAgentPath);
+                    sendCall(message, Step::agentUnregistered, std::string {}, false);
+                }
+            }
+
+            if (mAgentSlot != nullptr)
+                mAgentSlot = sd_bus_slot_unref(mAgentSlot);
+
+            mAgentRegistered = false;
+            setPairable(false);
+        }
+
+        // Pairable is what lets a device pair at all, and PairableTimeout makes bluetoothd clear it
+        // again, so a screen that is never closed cannot leave the adapter pairable forever.
+        void setPairable(const bool pairable)
+        {
+            if (!hasAdapter())
+                return;
+
+            if (pairable) {
+                sd_bus_message* timeout {
+                    newPropertySet(mAdapterPath, sAdapterInterface, "PairableTimeout")};
+                if (timeout != nullptr) {
+                    appendUnsignedVariant(timeout, sPairableTimeout);
+                    sendCall(timeout, Step::pairableTimeoutSet, std::string {}, false);
+                }
+            }
+
+            sd_bus_message* message {newPropertySet(mAdapterPath, sAdapterInterface, "Pairable")};
+            if (message == nullptr)
+                return;
+
+            appendBooleanVariant(message, pairable);
+            sendCall(message, Step::pairableSet, std::string {}, false);
+        }
+
+        // True for the device that has a pair in flight, which is the only one the agent serves.
+        bool isPairingDevice(const std::string& devicePath) const
+        {
+            const auto operation {mActiveOperations.find(devicePath)};
+            return operation != mActiveOperations.end() &&
+                   operation->second == BluetoothOp::pairing;
+        }
+
+        static int rejectAgentRequest(sd_bus_error* error)
+        {
+            return sd_bus_error_set(error, "org.bluez.Error.Rejected",
+                                    "The device is not being paired");
+        }
+
+        static int onAgentRelease(sd_bus_message* message, void* userdata, sd_bus_error*)
+        {
+            auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
+            manager->mAgentRegistered = false;
+            LOG(LogWarning) << "Bluetooth: the pairing agent was released by the Bluetooth service";
+
+            return sd_bus_reply_method_return(message, nullptr);
+        }
+
+        static int onAgentCancel(sd_bus_message* message, void* userdata, sd_bus_error*)
+        {
+            auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
+
+            // bluetoothd gave up on the pairing, so the operation in flight is over.
+            std::string pairingPath;
+            for (const auto& operation : manager->mActiveOperations) {
+                if (operation.second == BluetoothOp::pairing) {
+                    pairingPath = operation.first;
+                    break;
+                }
+            }
+
+            if (!pairingPath.empty())
+                manager->finishOperation(pairingPath, true, "The pairing was canceled");
+            else
+                manager->publish();
+
+            return sd_bus_reply_method_return(message, nullptr);
+        }
+
+        static int onAgentRequestPinCode(sd_bus_message* message,
+                                         void* userdata,
+                                         sd_bus_error* error)
+        {
+            auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
+
+            const char* devicePath {nullptr};
+            if (sd_bus_message_read(message, "o", &devicePath) < 0)
+                return rejectAgentRequest(error);
+            if (!manager->isPairingDevice(devicePath))
+                return rejectAgentRequest(error);
+
+            // Legacy PIN pairing, where the code has to come from somewhere and nothing here can
+            // display or type one.
+            return sd_bus_reply_method_return(message, "s", "0000");
+        }
+
+        static int onAgentRequestPasskey(sd_bus_message*, void*, sd_bus_error* error)
+        {
+            // A passkey would have to be typed on the device or read from this one.
+            return rejectAgentRequest(error);
+        }
+
+        static int onAgentRequestConfirmation(sd_bus_message* message,
+                                              void* userdata,
+                                              sd_bus_error* error)
+        {
+            auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
+
+            const char* devicePath {nullptr};
+            std::uint32_t passkey {0};
+            if (sd_bus_message_read(message, "ou", &devicePath, &passkey) < 0)
+                return rejectAgentRequest(error);
+            if (!manager->isPairingDevice(devicePath))
+                return rejectAgentRequest(error);
+
+            return sd_bus_reply_method_return(message, nullptr);
+        }
+
+        // Only the calls a NoInputNoOutput agent can answer are published.
+        static const sd_bus_vtable* agentVTable()
+        {
+            static const sd_bus_vtable vtable[] = {
+                SD_BUS_VTABLE_START(0),
+                SD_BUS_METHOD("Release", "", "", onAgentRelease, SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("Cancel", "", "", onAgentCancel, SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("RequestPinCode",
+                              "o",
+                              "s",
+                              onAgentRequestPinCode,
+                              SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("RequestPasskey",
+                              "o",
+                              "u",
+                              onAgentRequestPasskey,
+                              SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("RequestConfirmation",
+                              "ou",
+                              "",
+                              onAgentRequestConfirmation,
+                              SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("RequestAuthorization",
+                              "o",
+                              "",
+                              onAgentRequestAuthorization,
+                              SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_METHOD("AuthorizeService",
+                              "os",
+                              "",
+                              onAgentAuthorizeService,
+                              SD_BUS_VTABLE_UNPRIVILEGED),
+                SD_BUS_VTABLE_END
+            };
+
+            return vtable;
+        }
+
+        static int onAgentRequestAuthorization(sd_bus_message*, void*, sd_bus_error* error)
+        {
+            // Only the device that is being paired may ask for anything.
+            return rejectAgentRequest(error);
+        }
+
+        static int onAgentAuthorizeService(sd_bus_message* message,
+                                           void* userdata,
+                                           sd_bus_error* error)
+        {
+            auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
+
+            const char* devicePath {nullptr};
+            const char* uuid {nullptr};
+            if (sd_bus_message_read(message, "os", &devicePath, &uuid) < 0)
+                return rejectAgentRequest(error);
+            if (!manager->isPairingDevice(devicePath))
+                return rejectAgentRequest(error);
+
+            return sd_bus_reply_method_return(message, nullptr);
+        }
+
         //------------------------------------------------------------------------------------------
         // Snapshot.
 
@@ -858,6 +1199,20 @@ namespace
             mState.setManagedObjects(objects);
             mState.setLastError(std::string {});
             publish();
+
+            // Both need the adapter path, so they wait for the enumeration to arrive.
+            if (!mStartupStateCleared && !mAdapterPath.empty()) {
+                // A crash with the Bluetooth screen open would otherwise leave the adapter
+                // pairable.
+                mStartupStateCleared = true;
+                setPairable(false);
+            }
+
+            if (mReregisterAgent && !mAdapterPath.empty()) {
+                // The registration belongs to bluetoothd, which forgot it when it restarted.
+                mReregisterAgent = false;
+                registerAgent();
+            }
         }
 
         void setError(const std::string& error)
@@ -913,7 +1268,7 @@ namespace
 
                     case Command::Type::setPowered:
                         if (ensureBus())
-                            performSetPowered(command.powered);
+                            performSetPowered(command.state);
                         break;
 
                     case Command::Type::startDiscovery:
@@ -944,6 +1299,11 @@ namespace
                     case Command::Type::forget:
                         if (ensureBus())
                             performForget(command.path);
+                        break;
+
+                    case Command::Type::setPairingEnabled:
+                        if (ensureBus())
+                            performSetPairingEnabled(command.state);
                         break;
                 }
             }
@@ -1021,6 +1381,9 @@ namespace
             // new instance has to be enumerated; the matches survive, they belong to our
             // connection. Re-registering the pairing agent is done by the pairing agent itself.
             if (newOwner != nullptr && newOwner[0] != '\0') {
+                // The registration belongs to bluetoothd, so it is redone once the objects are
+                // there again: both the agent and Pairable need the adapter path.
+                mReregisterAgent = mPairingEnabled;
                 requestManagedObjects();
                 return;
             }
@@ -1130,6 +1493,11 @@ namespace
         std::map<std::string, BluetoothOp> mActiveOperations;
 
         BluetoothState mState;
+        bool mPairingEnabled {false};
+        bool mAgentRegistered {false};
+        bool mReregisterAgent {false};
+        bool mStartupStateCleared {false};
+        sd_bus_slot* mAgentSlot {nullptr};
     };
 
 } // namespace

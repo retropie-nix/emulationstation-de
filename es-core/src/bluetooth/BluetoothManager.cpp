@@ -37,6 +37,7 @@ namespace
         void connect(const std::string&) override { }
         void disconnect(const std::string&) override { }
         void forget(const std::string&) override { }
+        void setPairingEnabled(const bool) override { }
 
     private:
         std::shared_ptr<const BluetoothSnapshot> mSnapshot;
