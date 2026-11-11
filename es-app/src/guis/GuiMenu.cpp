@@ -27,6 +27,7 @@
 #include "components/SliderComponent.h"
 #include "components/SwitchComponent.h"
 #include "guis/GuiAlternativeEmulators.h"
+#include "guis/GuiBluetoothSettings.h"
 #include "guis/GuiCollectionSystemsOptions.h"
 #include "guis/GuiDetectDevice.h"
 #include "guis/GuiGameImporter.h"
@@ -72,6 +73,11 @@ GuiMenu::GuiMenu()
     if (isFullUI)
         addEntry(_("INPUT DEVICE SETTINGS"), mMenuColorPrimary, true,
                  [this] { openInputDeviceOptions(); });
+
+    // Strictly full UI mode: unlike the other settings entries this one also has to stay out of
+    // kid mode when EnableMenuKidMode is set.
+    if (isFullUI && !UIModeController::getInstance()->isUIModeKid())
+        addEntry(_("BLUETOOTH"), mMenuColorPrimary, true, [this] { openBluetoothSettings(); });
 
     if (isFullUI)
         addEntry(_("GAME COLLECTION SETTINGS"), mMenuColorPrimary, true,
@@ -1362,6 +1368,11 @@ void GuiMenu::openSoundOptions()
 
     s->setSize(mSize);
     mWindow->pushGui(s);
+}
+
+void GuiMenu::openBluetoothSettings()
+{
+    mWindow->pushGui(new GuiBluetoothSettings);
 }
 
 void GuiMenu::openInputDeviceOptions()

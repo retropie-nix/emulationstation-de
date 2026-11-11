@@ -42,6 +42,7 @@ private:
     void openScreenLaunchOptions();
     void openSoundOptions();
     void openInputDeviceOptions();
+    void openBluetoothSettings();
     void openConfigInput(GuiSettings* settings);
     void openCollectionSystemOptions();
     void openOtherOptions();

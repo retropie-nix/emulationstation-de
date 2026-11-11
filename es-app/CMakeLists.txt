@@ -28,6 +28,7 @@ set(ES_HEADERS
 
     # GUIs
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiAlternativeEmulators.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiBluetoothSettings.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiApplicationUpdater.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiGameImporter.h
@@ -81,6 +82,7 @@ set(ES_SOURCES
 
     # GUIs
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiAlternativeEmulators.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiBluetoothSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiApplicationUpdater.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiCollectionSystemsOptions.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/guis/GuiGameImporter.cpp
