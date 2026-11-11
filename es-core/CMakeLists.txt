@@ -25,6 +25,9 @@ set(CORE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.h
 
+    # Bluetooth
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
+
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/Animation.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/AnimationController.h
@@ -113,6 +116,9 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemStatus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.cpp
+
+    # Bluetooth
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.cpp
 
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/AnimationController.cpp
