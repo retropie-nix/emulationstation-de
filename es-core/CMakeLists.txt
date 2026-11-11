@@ -27,6 +27,7 @@ set(CORE_HEADERS
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.h
 
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/Animation.h
@@ -119,6 +120,7 @@ set(CORE_SOURCES
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.cpp
 
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/AnimationController.cpp
@@ -199,6 +201,19 @@ if(IOS)
 endif()
 
 #---------------------------------------------------------------------------------------------------
+# Bluetooth device management.
+#
+# The reducer is platform independent and is always compiled. The BlueZ backend is only compiled
+# when the build option enabled it, which configure only allows when libsystemd was found.
+
+if(BLUETOOTH_MANAGER)
+    set(CORE_SOURCES ${CORE_SOURCES}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManagerBlueZ.cpp)
+    list(APPEND COMMON_INCLUDE_DIRS ${LIBSYSTEMD_INCLUDE_DIRS})
+    list(APPEND COMMON_LIBRARIES ${LIBSYSTEMD_LIBRARIES})
+endif()
+
+#---------------------------------------------------------------------------------------------------
 # Miscellaneous configuration.
 
 include_directories(${COMMON_INCLUDE_DIRS})
@@ -217,9 +232,13 @@ if(BUILD_TESTS)
     add_executable(es-core-tests
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
     target_include_directories(es-core-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
     # Same link line as es-app, as linking es-core pulls in the static LunaSVG library.
     target_link_libraries(es-core-tests ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg)
     add_test(NAME es-core-tests COMMAND es-core-tests)
+    # The Bluetooth manager test starts the backend worker, which must shut down again.
+    set_tests_properties(es-core-tests PROPERTIES TIMEOUT 120)
 endif()

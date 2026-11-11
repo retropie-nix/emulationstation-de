@@ -28,6 +28,17 @@ enum class BluetoothOp {
     removing
 };
 
+// What a device is, from the point of view of the UI. Derived from the service UUIDs, the icon
+// and the appearance, so that it also works before a device was ever connected.
+enum class BluetoothDeviceKind {
+    other,
+    controller,
+    keyboard,
+    mouse,
+    headset,
+    speaker
+};
+
 struct BluetoothDevice {
     // The BlueZ object path, which is the identity of the device.
     std::string path;
@@ -39,6 +50,9 @@ struct BluetoothDevice {
     std::vector<std::string> uuids;
     // The Bluetooth appearance value, 0 when the device does not report one.
     std::uint32_t appearance {0};
+    // The Bluetooth device class, 0 when the device does not report one. Devices that only speak
+    // Bluetooth Low Energy have no class.
+    std::uint32_t deviceClass {0};
     bool paired {false};
     bool connected {false};
     bool trusted {false};
@@ -46,6 +60,7 @@ struct BluetoothDevice {
     int battery {-1};
     // Signal strength, 0 when unknown.
     int rssi {0};
+    BluetoothDeviceKind kind {BluetoothDeviceKind::other};
     BluetoothOp pending {BluetoothOp::none};
 };
 
