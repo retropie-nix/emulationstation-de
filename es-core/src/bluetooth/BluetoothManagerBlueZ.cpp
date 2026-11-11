@@ -28,6 +28,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -37,6 +38,9 @@ namespace
     constexpr const char* sBlueZService {"org.bluez"};
     constexpr const char* sObjectManagerPath {"/"};
     constexpr const char* sObjectManagerInterface {"org.freedesktop.DBus.ObjectManager"};
+    constexpr const char* sPropertiesInterface {"org.freedesktop.DBus.Properties"};
+    constexpr const char* sAdapterInterface {"org.bluez.Adapter1"};
+    constexpr const char* sDeviceInterface {"org.bluez.Device1"};
 
     // Reads one D-Bus variant into the reduced property representation. Returns false when the
     // value type is not one of the supported ones, in which case the caller skips it.
@@ -252,8 +256,85 @@ namespace
         return sd_bus_message_exit_container(message) >= 0;
     }
 
+    // Appends one entry to an open a{sv} container.
+    bool appendStringProperty(sd_bus_message* message, const char* name, const char* value)
+    {
+        if (sd_bus_message_open_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") < 0)
+            return false;
+        if (sd_bus_message_append(message, "s", name) < 0)
+            return false;
+        if (sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "s") < 0)
+            return false;
+        if (sd_bus_message_append(message, "s", value) < 0)
+            return false;
+        if (sd_bus_message_close_container(message) < 0)
+            return false;
+
+        return sd_bus_message_close_container(message) >= 0;
+    }
+
+    bool appendBooleanProperty(sd_bus_message* message, const char* name, const bool value)
+    {
+        if (sd_bus_message_open_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") < 0)
+            return false;
+        if (sd_bus_message_append(message, "s", name) < 0)
+            return false;
+        if (sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "b") < 0)
+            return false;
+        if (sd_bus_message_append(message, "b", value ? 1 : 0) < 0)
+            return false;
+        if (sd_bus_message_close_container(message) < 0)
+            return false;
+
+        return sd_bus_message_close_container(message) >= 0;
+    }
+
     class BlueZBluetoothManager : public BluetoothManager
     {
+    private:
+        // The method call that is waiting for its reply. A few actions are made of several calls,
+        // and the step says which one is in flight.
+        enum class Step {
+            powered,
+            discoveryFiltered,
+            discoveryStarted,
+            discoveryStopped,
+            discoveryStoppedForPair,
+            discoveryStoppedForConnect,
+            trusted,
+            paired,
+            connected,
+            disconnected,
+            removed,
+            removedCleanup
+        };
+
+        // What a completion callback needs besides the reply itself.
+        struct FollowUp {
+            Step step {Step::powered};
+            std::string devicePath;
+            BlueZBluetoothManager* manager {nullptr};
+        };
+
+        // An action posted by the UI thread.
+        struct Command {
+            enum class Type {
+                stop,
+                refresh,
+                setPowered,
+                startDiscovery,
+                stopDiscovery,
+                pair,
+                connect,
+                disconnect,
+                forget
+            };
+
+            Type type {Type::refresh};
+            std::string path;
+            bool powered {false};
+        };
+
     public:
         BlueZBluetoothManager()
         {
@@ -285,19 +366,44 @@ namespace
 
         std::uint64_t getSequence() const override { return mSequence; }
 
-        // The actions are implemented by the ticket that adds them; the command queue and the
-        // snapshot bookkeeping they need are already in place.
-        void setPowered(const bool) override { }
-        void startDiscovery() override { }
-        void stopDiscovery() override { }
-        void pair(const std::string&) override { }
-        void connect(const std::string&) override { }
-        void disconnect(const std::string&) override { }
-        void forget(const std::string&) override { }
+        // The actions only post a command and wake the loop, so the UI thread never waits for the
+        // bus. Their progress and their outcome show up in later snapshots.
+        void setPowered(const bool powered) override
+        {
+            postCommand({Command::Type::setPowered, std::string {}, powered});
+        }
+
+        void startDiscovery() override
+        {
+            postCommand({Command::Type::startDiscovery, std::string {}, false});
+        }
+
+        void stopDiscovery() override
+        {
+            postCommand({Command::Type::stopDiscovery, std::string {}, false});
+        }
+
+        void pair(const std::string& devicePath) override
+        {
+            postCommand({Command::Type::pair, devicePath, false});
+        }
+
+        void connect(const std::string& devicePath) override
+        {
+            postCommand({Command::Type::connect, devicePath, false});
+        }
+
+        void disconnect(const std::string& devicePath) override
+        {
+            postCommand({Command::Type::disconnect, devicePath, false});
+        }
+
+        void forget(const std::string& devicePath) override
+        {
+            postCommand({Command::Type::forget, devicePath, false});
+        }
 
     private:
-        enum class Command { stop, refresh };
-
         void run()
         {
             if (sd_event_default(&mEvent) < 0) {
@@ -343,7 +449,7 @@ namespace
 
             {
                 std::lock_guard<std::mutex> lock {mCommandMutex};
-                mCommands.push_back(Command::stop);
+                mCommands.push_back({Command::Type::stop, std::string {}, false});
             }
             wake();
             mThread.join();
@@ -364,6 +470,15 @@ namespace
                 LOG(LogWarning) << "Bluetooth: could not wake the event loop: "
                                 << std::strerror(errno);
             }
+        }
+
+        void postCommand(Command command)
+        {
+            {
+                std::lock_guard<std::mutex> lock {mCommandMutex};
+                mCommands.push_back(std::move(command));
+            }
+            wake();
         }
 
         void addMatches()
@@ -407,6 +522,337 @@ namespace
             }
         }
 
+        //------------------------------------------------------------------------------------------
+        // Actions, everything below runs on the loop thread.
+
+        void performSetPowered(const bool powered)
+        {
+            if (!hasAdapter())
+                return;
+
+            sd_bus_message* message {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &message,
+                                               sBlueZService,
+                                               mAdapterPath.c_str(),
+                                               sAdapterInterface,
+                                               "SetPowered") < 0) {
+                setError("Could not reach the Bluetooth service");
+                return;
+            }
+
+            sd_bus_message_append(message, "b", powered ? 1 : 0);
+            sendCall(message, Step::powered, std::string {});
+        }
+
+        void performStartDiscovery()
+        {
+            if (!hasAdapter())
+                return;
+
+            sd_bus_message* message {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &message,
+                                               sBlueZService,
+                                               mAdapterPath.c_str(),
+                                               sAdapterInterface,
+                                               "SetDiscoveryFilter") < 0) {
+                setError("Could not reach the Bluetooth service");
+                return;
+            }
+
+            // "auto" scans both transports, and refusing duplicate reports keeps the adapter from
+            // reporting the same advertisement over and over.
+            sd_bus_message_open_container(message, SD_BUS_TYPE_ARRAY, "{sv}");
+            appendStringProperty(message, "Transport", "auto");
+            appendBooleanProperty(message, "DuplicateData", false);
+            sd_bus_message_close_container(message);
+
+            sendCall(message, Step::discoveryFiltered, std::string {});
+        }
+
+        void performStopDiscovery()
+        {
+            if (!hasAdapter())
+                return;
+
+            callMethod(mAdapterPath,
+                       sAdapterInterface,
+                       "StopDiscovery",
+                       Step::discoveryStopped,
+                       std::string {});
+        }
+
+        void performPair(const std::string& devicePath)
+        {
+            if (!beginOperation(devicePath, BluetoothOp::pairing))
+                return;
+
+            // Paging fails often while the adapter is still inquiring on these combo chips.
+            if (mDiscovering) {
+                callMethod(mAdapterPath,
+                           sAdapterInterface,
+                           "StopDiscovery",
+                           Step::discoveryStoppedForPair,
+                           devicePath);
+                return;
+            }
+
+            setTrusted(devicePath);
+        }
+
+        void performConnect(const std::string& devicePath)
+        {
+            if (!beginOperation(devicePath, BluetoothOp::connecting))
+                return;
+
+            if (mDiscovering) {
+                callMethod(mAdapterPath,
+                           sAdapterInterface,
+                           "StopDiscovery",
+                           Step::discoveryStoppedForConnect,
+                           devicePath);
+                return;
+            }
+
+            callMethod(devicePath, sDeviceInterface, "Connect", Step::connected, devicePath);
+        }
+
+        void performDisconnect(const std::string& devicePath)
+        {
+            if (!beginOperation(devicePath, BluetoothOp::disconnecting))
+                return;
+
+            callMethod(devicePath, sDeviceInterface, "Disconnect", Step::disconnected, devicePath);
+        }
+
+        void performForget(const std::string& devicePath)
+        {
+            if (!hasAdapter())
+                return;
+            if (!beginOperation(devicePath, BluetoothOp::removing))
+                return;
+
+            removeDevice(devicePath, true);
+        }
+
+        // RemoveDevice lives on the adapter and takes the device it removes as its argument. The
+        // quiet form is used to clean up after a failed pair, whose error is already reported.
+        void removeDevice(const std::string& devicePath, const bool reportFailure)
+        {
+            sd_bus_message* message {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &message,
+                                               sBlueZService,
+                                               mAdapterPath.c_str(),
+                                               sAdapterInterface,
+                                               "RemoveDevice") < 0) {
+                if (reportFailure) {
+                    finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+                }
+                return;
+            }
+
+            sd_bus_message_append(message, "o", devicePath.c_str());
+
+            auto* followUp {new FollowUp {reportFailure ? Step::removed : Step::removedCleanup,
+                                          devicePath,
+                                          this}};
+            const int result {
+                sd_bus_call_async(mBus, nullptr, message, onFollowUpReply, followUp, 0)};
+            sd_bus_message_unref(message);
+
+            if (result < 0) {
+                delete followUp;
+                if (reportFailure) {
+                    finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+                }
+            }
+        }
+
+        // BlueZ only consults a pairing agent for a device it does not trust yet, and a controller
+        // opens its HID channel right after pairing, before any later SetTrusted could run.
+        void setTrusted(const std::string& devicePath)
+        {
+            sd_bus_message* message {nullptr};
+            if (sd_bus_message_new_method_call(mBus,
+                                               &message,
+                                               sBlueZService,
+                                               devicePath.c_str(),
+                                               sPropertiesInterface,
+                                               "Set") < 0) {
+                finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+                return;
+            }
+
+            sd_bus_message_append(message, "ss", sDeviceInterface, "Trusted");
+            sd_bus_message_open_container(message, SD_BUS_TYPE_VARIANT, "b");
+            sd_bus_message_append(message, "b", 1);
+            sd_bus_message_close_container(message);
+
+            sendCall(message, Step::trusted, devicePath);
+        }
+
+        bool hasAdapter()
+        {
+            if (!mAdapterPath.empty())
+                return true;
+
+            setError("There is no Bluetooth adapter");
+            return false;
+        }
+
+        // Marks a device as busy. A second request for the same device is dropped while the first
+        // one is still in flight.
+        bool beginOperation(const std::string& devicePath, const BluetoothOp op)
+        {
+            if (mActiveOperations.find(devicePath) != mActiveOperations.end())
+                return false;
+
+            mActiveOperations[devicePath] = op;
+            mState.setPending(devicePath, op);
+            publish();
+            return true;
+        }
+
+        void finishOperation(const std::string& devicePath,
+                             const bool failed,
+                             const std::string& error)
+        {
+            if (!devicePath.empty()) {
+                mActiveOperations.erase(devicePath);
+                mState.clearPending(devicePath);
+            }
+
+            mState.setLastError(failed ? error : std::string {});
+            publish();
+        }
+
+        void cancelPendingOperations()
+        {
+            // The replies of the calls that are in flight will never be handled, so drop the
+            // bookkeeping instead of leaving rows that spin forever in the last snapshot. The
+            // busy map and the reducer's pending map are cleared together.
+            for (const auto& operation : mActiveOperations)
+                mState.clearPending(operation.first);
+
+            mActiveOperations.clear();
+            publish();
+        }
+
+        // Calls a method that takes no arguments.
+        void callMethod(const std::string& objectPath,
+                        const char* interfaceName,
+                        const char* member,
+                        const Step step,
+                        const std::string& devicePath)
+        {
+            auto* followUp {new FollowUp {step, devicePath, this}};
+
+            const int result {sd_bus_call_method_async(mBus,
+                                                       nullptr,
+                                                       sBlueZService,
+                                                       objectPath.c_str(),
+                                                       interfaceName,
+                                                       member,
+                                                       onFollowUpReply,
+                                                       followUp,
+                                                       nullptr)};
+            if (result < 0) {
+                delete followUp;
+                finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+            }
+        }
+
+        // Sends a method call message that was built with arguments.
+        void sendCall(sd_bus_message* message, const Step step, const std::string& devicePath)
+        {
+            auto* followUp {new FollowUp {step, devicePath, this}};
+
+            const int result {
+                sd_bus_call_async(mBus, nullptr, message, onFollowUpReply, followUp, 0)};
+            sd_bus_message_unref(message);
+
+            if (result < 0) {
+                delete followUp;
+                finishOperation(devicePath, true, "Could not reach the Bluetooth service");
+            }
+        }
+
+        void handleReply(const FollowUp& followUp, const bool failed, const std::string& error)
+        {
+            switch (followUp.step) {
+                case Step::powered:
+                case Step::discoveryStarted:
+                case Step::discoveryStopped:
+                case Step::connected:
+                case Step::disconnected:
+                case Step::removed:
+                    finishOperation(followUp.devicePath, failed, error);
+                    break;
+
+                case Step::removedCleanup:
+                    // Only drops the half paired device again, the pair failure was reported
+                    // already, so a failure here is not shown to the user.
+                    if (failed) {
+                        LOG(LogWarning) << "Bluetooth: could not remove the half paired device: "
+                                        << error;
+                    }
+                    break;
+
+                case Step::discoveryFiltered:
+                    if (failed) {
+                        finishOperation(std::string {}, true, error);
+                        break;
+                    }
+                    callMethod(mAdapterPath,
+                               sAdapterInterface,
+                               "StartDiscovery",
+                               Step::discoveryStarted,
+                               std::string {});
+                    break;
+
+                case Step::discoveryStoppedForPair:
+                    // Best effort, the pair is attempted even when the adapter refused to stop.
+                    setTrusted(followUp.devicePath);
+                    break;
+
+                case Step::discoveryStoppedForConnect:
+                    callMethod(followUp.devicePath,
+                               sDeviceInterface,
+                               "Connect",
+                               Step::connected,
+                               followUp.devicePath);
+                    break;
+
+                case Step::trusted:
+                    if (failed) {
+                        finishOperation(followUp.devicePath, true, error);
+                        break;
+                    }
+                    callMethod(followUp.devicePath,
+                               sDeviceInterface,
+                               "Pair",
+                               Step::paired,
+                               followUp.devicePath);
+                    break;
+
+                case Step::paired:
+                    if (!failed) {
+                        finishOperation(followUp.devicePath, false, error);
+                        break;
+                    }
+                    // A failed pair leaves a half paired entry behind. Report the failure first, so
+                    // that the removal cannot replace its message.
+                    finishOperation(followUp.devicePath, true, error);
+                    removeDevice(followUp.devicePath, false);
+                    break;
+            }
+        }
+
+        //------------------------------------------------------------------------------------------
+        // Snapshot.
+
         void setManagedObjects(const BluetoothObjectMap& objects)
         {
             mState.setManagedObjects(objects);
@@ -426,9 +872,16 @@ namespace
             std::shared_ptr<const BluetoothSnapshot> snapshot {
                 std::make_shared<BluetoothSnapshot>(mState.toSnapshot(sequence))};
 
+            // Read back by the actions, which run on this thread as well.
+            mAdapterPath = snapshot->adapterPath;
+            mDiscovering = snapshot->discovering;
+
             std::lock_guard<std::mutex> lock {mSnapshotMutex};
             mSnapshot = std::move(snapshot);
         }
+
+        //------------------------------------------------------------------------------------------
+        // Loop.
 
         void drainWake()
         {
@@ -447,16 +900,62 @@ namespace
                 commands.swap(mCommands);
             }
 
-            for (const Command command : commands) {
-                switch (command) {
-                    case Command::stop:
+            for (const Command& command : commands) {
+                switch (command.type) {
+                    case Command::Type::stop:
+                        cancelPendingOperations();
                         sd_event_exit(mEvent, 0);
-                        break;
-                    case Command::refresh:
+                        return;
+
+                    case Command::Type::refresh:
                         requestManagedObjects();
+                        break;
+
+                    case Command::Type::setPowered:
+                        if (ensureBus())
+                            performSetPowered(command.powered);
+                        break;
+
+                    case Command::Type::startDiscovery:
+                        if (ensureBus())
+                            performStartDiscovery();
+                        break;
+
+                    case Command::Type::stopDiscovery:
+                        if (ensureBus())
+                            performStopDiscovery();
+                        break;
+
+                    case Command::Type::pair:
+                        if (ensureBus())
+                            performPair(command.path);
+                        break;
+
+                    case Command::Type::connect:
+                        if (ensureBus())
+                            performConnect(command.path);
+                        break;
+
+                    case Command::Type::disconnect:
+                        if (ensureBus())
+                            performDisconnect(command.path);
+                        break;
+
+                    case Command::Type::forget:
+                        if (ensureBus())
+                            performForget(command.path);
                         break;
                 }
             }
+        }
+
+        bool ensureBus()
+        {
+            if (mBus != nullptr)
+                return true;
+
+            setError("The Bluetooth service is not available");
+            return false;
         }
 
         void handleInterfacesAdded(sd_bus_message* message)
@@ -526,6 +1025,10 @@ namespace
                 return;
             }
 
+            // Nothing can be in flight any more, as the service that would have replied is gone.
+            // mActiveOperations and the reducer's pending map are cleared together, otherwise a
+            // device that was mid-operation would be refused by beginOperation from now on.
+            mActiveOperations.clear();
             mState.clear();
             publish();
         }
@@ -584,6 +1087,28 @@ namespace
             return 0;
         }
 
+        static int onFollowUpReply(sd_bus_message* message, void* userdata, sd_bus_error*)
+        {
+            auto* followUp {static_cast<FollowUp*>(userdata)};
+            BlueZBluetoothManager* manager {followUp->manager};
+
+            const bool failed {sd_bus_message_is_method_error(message, nullptr) > 0};
+            std::string error;
+
+            if (failed) {
+                const sd_bus_error* busError {sd_bus_message_get_error(message)};
+                error = BluetoothState::describeError(
+                    busError != nullptr && busError->name != nullptr ? busError->name :
+                                                                       std::string {},
+                    busError != nullptr && busError->message != nullptr ? busError->message :
+                                                                          std::string {});
+            }
+
+            manager->handleReply(*followUp, failed, error);
+            delete followUp;
+            return 0;
+        }
+
         std::thread mThread;
         sd_event* mEvent {nullptr};
         sd_bus* mBus {nullptr};
@@ -595,6 +1120,14 @@ namespace
 
         std::mutex mCommandMutex;
         std::vector<Command> mCommands;
+
+        // Loop thread only.
+        std::string mAdapterPath;
+        bool mDiscovering {false};
+        // The operations that are in flight, mirrored into the snapshot by the reducer's pending
+        // map. The two have to be cleared together: a path left here would make beginOperation
+        // refuse every later request for that device.
+        std::map<std::string, BluetoothOp> mActiveOperations;
 
         BluetoothState mState;
     };
