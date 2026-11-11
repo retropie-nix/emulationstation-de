@@ -83,8 +83,13 @@ GuiMenu::GuiMenu()
     if (isFullUI)
         addEntry(_("UTILITIES"), mMenuColorPrimary, true, [this] { openUtilities(); });
 
-    if (!Settings::getInstance()->getBool("ForceKiosk") &&
-        Settings::getInstance()->getString("UIMode") != "kiosk") {
+    // A dedicated power menu keeps an appliance from ever dropping to a shell. When it is
+    // disabled the stock quit entries below are left untouched.
+    if (Settings::getInstance()->getBool("PowerMenu")) {
+        addEntry(_("POWER"), mMenuColorPrimary, true, [this] { openPowerMenu(); });
+    }
+    else if (!Settings::getInstance()->getBool("ForceKiosk") &&
+             Settings::getInstance()->getString("UIMode") != "kiosk") {
 #if defined(__APPLE__)
         addEntry(_("QUIT ES-DE"), mMenuColorPrimary, false, [this] { openQuitMenu(); });
 #elif defined(__ANDROID__)
@@ -2232,6 +2237,18 @@ void GuiMenu::openOtherOptions()
     });
 #endif
 
+    // Whether to show a dedicated power menu instead of the quit entries.
+    auto powerMenu = std::make_shared<SwitchComponent>();
+    powerMenu->setState(Settings::getInstance()->getBool("PowerMenu"));
+    s->addWithLabel(_("SHOW POWER MENU (REBOOT AND POWER OFF ENTRIES)"), powerMenu);
+    s->addSaveFunc([this, powerMenu, s] {
+        if (powerMenu->getState() != Settings::getInstance()->getBool("PowerMenu")) {
+            Settings::getInstance()->setBool("PowerMenu", powerMenu->getState());
+            s->setNeedsSaving();
+            s->setNeedsCloseMenu([this] { delete this; });
+        }
+    });
+
 #if defined(APPLICATION_UPDATER) && !defined(__ANDROID__) && !defined(IS_PRERELEASE)
     auto applicationUpdaterFrequencyFunc =
         [applicationUpdaterPrereleases](const std::string& frequency) {
@@ -2532,6 +2549,51 @@ void GuiMenu::openQuitMenu()
         s->setSize(mSize);
         mWindow->pushGui(s);
     }
+}
+
+void GuiMenu::openPowerMenu()
+{
+    // Only power operations are available. This frontend is the whole user interface of an
+    // appliance, so there is deliberately no way to quit to a shell.
+    auto s = new GuiSettings(_("POWER"));
+
+    Window* window {mWindow};
+
+    ComponentListRow row;
+
+    row.makeAcceptInputHandler([window] {
+        window->pushGui(new GuiMsgBox(
+            _("REALLY REBOOT?"), _("YES"),
+            [] {
+                if (Utils::Platform::quitES(Utils::Platform::QuitMode::REBOOT) != 0)
+                    LOG(LogWarning) << "Couldn't reboot system";
+            },
+            _("NO"), nullptr));
+    });
+    auto rebootText = std::make_shared<TextComponent>(
+        _("REBOOT SYSTEM"), Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary);
+    rebootText->setSelectable(true);
+    row.addElement(rebootText, true);
+    s->addRow(row);
+
+    row.elements.clear();
+    row.makeAcceptInputHandler([window] {
+        window->pushGui(new GuiMsgBox(
+            _("REALLY POWER OFF?"), _("YES"),
+            [] {
+                if (Utils::Platform::quitES(Utils::Platform::QuitMode::POWEROFF) != 0)
+                    LOG(LogWarning) << "Couldn't power off system";
+            },
+            _("NO"), nullptr));
+    });
+    auto powerOffText = std::make_shared<TextComponent>(
+        _("POWER OFF SYSTEM"), Font::get(FONT_SIZE_MEDIUM), mMenuColorPrimary);
+    powerOffText->setSelectable(true);
+    row.addElement(powerOffText, true);
+    s->addRow(row);
+
+    s->setSize(mSize);
+    mWindow->pushGui(s);
 }
 
 void GuiMenu::addVersionInfo()
