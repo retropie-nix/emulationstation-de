@@ -9,6 +9,11 @@
 
 #include "bluetooth/BluetoothManager.h"
 
+#if defined(BLUETOOTH_MANAGER_BLUEZ)
+// Defined by BluetoothManagerBlueZ.cpp.
+std::unique_ptr<BluetoothManager> createBlueZBluetoothManager();
+#endif
+
 namespace
 {
     // Reports the service as unavailable and ignores all actions. This is what every platform
@@ -37,11 +42,14 @@ namespace
         std::shared_ptr<const BluetoothSnapshot> mSnapshot;
     };
 
-    // The backend is chosen here. The BlueZ implementation is added under
-    // BLUETOOTH_MANAGER_BLUEZ by the ticket that introduces its source file.
+    // The backend is chosen here, at build time.
     std::unique_ptr<BluetoothManager> createBluetoothManager()
     {
+#if defined(BLUETOOTH_MANAGER_BLUEZ)
+        return createBlueZBluetoothManager();
+#else
         return std::make_unique<NullBluetoothManager>();
+#endif
     }
 
 } // namespace
