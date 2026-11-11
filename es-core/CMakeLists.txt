@@ -203,3 +203,17 @@ if(ANDROID)
     set_target_properties(es-core PROPERTIES ARCHIVE_OUTPUT_DIRECTORY
                           ${PROJECT_SOURCE_DIR}/../android_${ANDROID_ABI})
 endif()
+
+#---------------------------------------------------------------------------------------------------
+# Tests.
+
+if(BUILD_TESTS)
+    add_executable(es-core-tests
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
+    target_include_directories(es-core-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    # Same link line as es-app, as linking es-core pulls in the static LunaSVG library.
+    target_link_libraries(es-core-tests ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg)
+    add_test(NAME es-core-tests COMMAND es-core-tests)
+endif()
