@@ -25,6 +25,9 @@ set(CORE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.h
 
+    # Audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.h
+
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.h
@@ -117,6 +120,9 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemStatus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.cpp
+
+    # Audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.cpp
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.cpp
@@ -214,6 +220,19 @@ if(BLUETOOTH_MANAGER)
 endif()
 
 #---------------------------------------------------------------------------------------------------
+# Audio output device management.
+#
+# The interface is platform independent and is always compiled. The libpulse implementation is only
+# compiled when the build option enabled it, which configure only allows when libpulse was found.
+
+if(AUDIO_OUTPUT_MANAGER)
+    set(CORE_SOURCES ${CORE_SOURCES}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManagerPulse.cpp)
+    list(APPEND COMMON_INCLUDE_DIRS ${LIBPULSE_INCLUDE_DIRS})
+    list(APPEND COMMON_LIBRARIES ${LIBPULSE_LIBRARIES})
+endif()
+
+#---------------------------------------------------------------------------------------------------
 # Miscellaneous configuration.
 
 include_directories(${COMMON_INCLUDE_DIRS})
@@ -232,6 +251,7 @@ if(BUILD_TESTS)
     add_executable(es-core-tests
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioOutputManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
