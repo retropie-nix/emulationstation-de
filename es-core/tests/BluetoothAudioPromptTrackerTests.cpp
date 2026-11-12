@@ -21,6 +21,10 @@ namespace
     constexpr const char* hdmiSink {"alsa_output.pci-0000_01_00.0.hdmi-stereo"};
     constexpr const char* headsetName {"WH-1000XM4"};
 
+    constexpr BluetoothAudioMode sAsk {BluetoothAudioMode::ask};
+    constexpr BluetoothAudioMode sAuto {BluetoothAudioMode::autoSwitch};
+    constexpr BluetoothAudioMode sOff {BluetoothAudioMode::off};
+
     AudioOutput makeOutput(const std::string& id,
                            const std::string& description = "",
                            const std::string& bluetoothAddress = "")
@@ -74,20 +78,72 @@ TEST_CASE(bluetoothSinkIsOfferedAfterTheGracePeriod)
 
     // The sink is announced before the sound server has restored it as the default, so nothing is
     // offered while the grace period runs.
-    EXPECT(tracker.update(audio, bluetooth, 0).outputId.empty());
-    EXPECT(tracker.update(audio, bluetooth,
+    EXPECT(tracker.update(audio, bluetooth, sAsk, 0).action == BluetoothAudioOffer::none);
+    EXPECT(tracker.update(audio, bluetooth, sAsk,
                           BluetoothAudioPromptTracker::sGracePeriod - 1)
-               .outputId.empty());
+               .action == BluetoothAudioOffer::none);
 
     const BluetoothAudioPromptTracker::Offer offer {
-        tracker.update(audio, bluetooth, BluetoothAudioPromptTracker::sGracePeriod)};
+        tracker.update(audio, bluetooth, sAsk, BluetoothAudioPromptTracker::sGracePeriod)};
+    EXPECT(offer.action == BluetoothAudioOffer::prompt);
     EXPECT(offer.outputId == headsetSink);
     EXPECT(offer.deviceName == headsetName);
 
     // It is not offered again for the same connection.
-    EXPECT(tracker.update(audio, bluetooth, BluetoothAudioPromptTracker::sGracePeriod + 1)
-               .outputId.empty());
-    EXPECT(tracker.update(audio, bluetooth, 60000).outputId.empty());
+    EXPECT(tracker.update(audio, bluetooth, sAsk,
+                          BluetoothAudioPromptTracker::sGracePeriod + 1)
+               .action == BluetoothAudioOffer::none);
+    EXPECT(tracker.update(audio, bluetooth, sAsk, 60000).action == BluetoothAudioOffer::none);
+}
+
+TEST_CASE(autoModeSwitchesWithoutAsking)
+{
+    BluetoothAudioPromptTracker tracker;
+    const AudioSnapshot audio {makeAudio(true, false)};
+    const BluetoothSnapshot bluetooth {makeBluetooth(true)};
+
+    EXPECT(tracker.update(audio, bluetooth, sAuto, 0).action == BluetoothAudioOffer::none);
+
+    const BluetoothAudioPromptTracker::Offer offer {
+        tracker.update(audio, bluetooth, sAuto, BluetoothAudioPromptTracker::sGracePeriod)};
+    EXPECT(offer.action == BluetoothAudioOffer::switchOutput);
+    EXPECT(offer.outputId == headsetSink);
+
+    // The automatic switch is remembered like a prompt, so it happens once per connection.
+    EXPECT(tracker.update(audio, bluetooth, sAuto,
+                          BluetoothAudioPromptTracker::sGracePeriod + 1)
+               .action == BluetoothAudioOffer::none);
+    EXPECT(tracker.update(audio, bluetooth, sAsk, 60000).action == BluetoothAudioOffer::none);
+}
+
+TEST_CASE(offModeNeverOffersAnything)
+{
+    BluetoothAudioPromptTracker tracker;
+    const AudioSnapshot audio {makeAudio(true, false)};
+    const BluetoothSnapshot bluetooth {makeBluetooth(true)};
+
+    EXPECT(tracker.update(audio, bluetooth, sOff, 0).action == BluetoothAudioOffer::none);
+    EXPECT(tracker.update(audio, bluetooth, sOff, 10000).action == BluetoothAudioOffer::none);
+    EXPECT(tracker.update(audio, bluetooth, sOff, 60000).action == BluetoothAudioOffer::none);
+
+    // Nothing was remembered, so turning asking back on offers the still-connected device once
+    // its (long elapsed) grace period is checked again.
+    const BluetoothAudioPromptTracker::Offer offer {
+        tracker.update(audio, bluetooth, sAsk, 60001)};
+    EXPECT(offer.action == BluetoothAudioOffer::prompt);
+    EXPECT(offer.outputId == headsetSink);
+}
+
+TEST_CASE(settingStringsMapToTheThreeModes)
+{
+    EXPECT(BluetoothAudioPromptTracker::modeFromString("ask") == BluetoothAudioMode::ask);
+    EXPECT(BluetoothAudioPromptTracker::modeFromString("auto") ==
+           BluetoothAudioMode::autoSwitch);
+    EXPECT(BluetoothAudioPromptTracker::modeFromString("off") == BluetoothAudioMode::off);
+
+    // An empty or manually edited value falls back to asking.
+    EXPECT(BluetoothAudioPromptTracker::modeFromString("") == BluetoothAudioMode::ask);
+    EXPECT(BluetoothAudioPromptTracker::modeFromString("something") == BluetoothAudioMode::ask);
 }
 
 TEST_CASE(defaultSinkIsNotOffered)
@@ -95,13 +151,17 @@ TEST_CASE(defaultSinkIsNotOffered)
     BluetoothAudioPromptTracker tracker;
 
     // The device is already the default, which is what a reconnecting accepted device looks like.
-    EXPECT(tracker.update(makeAudio(true, true), makeBluetooth(true), 0).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, true), makeBluetooth(true), 10000).outputId.empty());
+    EXPECT(tracker.update(makeAudio(true, true), makeBluetooth(true), sAsk, 0).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, true), makeBluetooth(true), sAsk, 10000).action ==
+           BluetoothAudioOffer::none);
 
     // When it stops being the default later, the grace period starts over.
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 20000).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 22000).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 23000).outputId ==
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 20000).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 22000).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 23000).outputId ==
            headsetSink);
 }
 
@@ -109,12 +169,15 @@ TEST_CASE(disconnectedDeviceIsNotOffered)
 {
     BluetoothAudioPromptTracker tracker;
 
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(false), 0).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(false), 10000).outputId.empty());
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(false), sAsk, 0).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(false), sAsk, 10000).action ==
+           BluetoothAudioOffer::none);
 
     // Once the device reports connected the grace period starts.
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 20000).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true),
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 20000).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk,
                           20000 + BluetoothAudioPromptTracker::sGracePeriod)
                .outputId == headsetSink);
 }
@@ -123,18 +186,22 @@ TEST_CASE(disappearingSinkForgetsTheOffer)
 {
     BluetoothAudioPromptTracker tracker;
 
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 0).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true),
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 0).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk,
                           BluetoothAudioPromptTracker::sGracePeriod)
                .outputId == headsetSink);
 
     // The sink is gone, so nothing is offered and the offer is forgotten.
-    EXPECT(tracker.update(makeAudio(false, false), makeBluetooth(false), 5000).outputId.empty());
+    EXPECT(tracker.update(makeAudio(false, false), makeBluetooth(false), sAsk, 5000).action ==
+           BluetoothAudioOffer::none);
 
     // The reconnection starts a new grace period instead of offering it right away.
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 10000).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), 12000).outputId.empty());
-    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true),
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 10000).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk, 12000).action ==
+           BluetoothAudioOffer::none);
+    EXPECT(tracker.update(makeAudio(true, false), makeBluetooth(true), sAsk,
                           10000 + BluetoothAudioPromptTracker::sGracePeriod)
                .outputId == headsetSink);
 }
@@ -144,15 +211,16 @@ TEST_CASE(otherSinksAreNotOffered)
     BluetoothAudioPromptTracker tracker;
 
     // A sink that does not belong to a Bluetooth device is never offered.
-    EXPECT(tracker.update(makeAudio(false, false), makeBluetooth(false), 0).outputId.empty());
+    EXPECT(tracker.update(makeAudio(false, false), makeBluetooth(false), sAsk, 0).action ==
+           BluetoothAudioOffer::none);
 
     // Neither is the sink of a device that is not an audio device.
     EXPECT(tracker.update(makeAudio(true, false),
-                          makeBluetooth(true, BluetoothDeviceKind::keyboard), 0)
-               .outputId.empty());
+                          makeBluetooth(true, BluetoothDeviceKind::keyboard), sAsk, 0)
+               .action == BluetoothAudioOffer::none);
     EXPECT(tracker.update(makeAudio(true, false),
-                          makeBluetooth(true, BluetoothDeviceKind::keyboard), 20000)
-               .outputId.empty());
+                          makeBluetooth(true, BluetoothDeviceKind::keyboard), sAsk, 20000)
+               .action == BluetoothAudioOffer::none);
 }
 
 TEST_CASE(twoBluetoothSinksAreOfferedOneAtATime)
@@ -174,14 +242,14 @@ TEST_CASE(twoBluetoothSinksAreOfferedOneAtATime)
 
     // Only one is offered per observation, and the other follows on the next one even though its
     // grace period also elapsed.
-    EXPECT(tracker.update(audio, bluetooth, 0).outputId.empty());
+    EXPECT(tracker.update(audio, bluetooth, sAsk, 0).action == BluetoothAudioOffer::none);
 
     const BluetoothAudioPromptTracker::Offer first {
-        tracker.update(audio, bluetooth, BluetoothAudioPromptTracker::sGracePeriod)};
+        tracker.update(audio, bluetooth, sAsk, BluetoothAudioPromptTracker::sGracePeriod)};
     EXPECT(first.outputId == headsetSink);
 
     const BluetoothAudioPromptTracker::Offer second {
-        tracker.update(audio, bluetooth, BluetoothAudioPromptTracker::sGracePeriod + 1)};
+        tracker.update(audio, bluetooth, sAsk, BluetoothAudioPromptTracker::sGracePeriod + 1)};
     EXPECT(second.outputId == "bluez_output.11_22_33_44_55_66.1");
     EXPECT(second.deviceName == "Speaker");
 }

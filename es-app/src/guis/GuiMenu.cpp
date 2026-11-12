@@ -1365,6 +1365,29 @@ void GuiMenu::openSoundOptions()
         s->addWithLabel(_("AUDIO OUTPUT"), std::make_shared<AudioOutputComponent>());
     }
 
+    // What happens when a Bluetooth audio device connects. The change applies immediately, so
+    // there is nothing to save when the screen closes.
+    if (UIModeController::getInstance()->isUIModeFull() &&
+        !UIModeController::getInstance()->isUIModeKid()) {
+        auto bluetoothAudioMode {std::make_shared<OptionListComponent<std::string>>(
+            _("BLUETOOTH AUDIO"), false)};
+        const std::string currentMode {Settings::getInstance()->getString("BluetoothAudioMode")};
+        bluetoothAudioMode->add(_("ASK"), "ask", currentMode == "ask");
+        bluetoothAudioMode->add(_("AUTO"), "auto", currentMode == "auto");
+        bluetoothAudioMode->add(_("OFF"), "off", currentMode == "off");
+
+        // A manually edited setting that matches none of the entries leaves nothing selected.
+        if (bluetoothAudioMode->getSelectedObjects().size() == 0)
+            bluetoothAudioMode->selectEntry(0);
+
+        bluetoothAudioMode->setCallback([](const std::string& value) {
+            Settings::getInstance()->setString("BluetoothAudioMode", value);
+            Settings::getInstance()->saveFile();
+        });
+
+        s->addWithLabel(_("BLUETOOTH AUDIO"), bluetoothAudioMode);
+    }
+
 // TODO: Implement system volume support for macOS and Android.
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__FreeBSD__) && !defined(__HAIKU__)
     // System volume.

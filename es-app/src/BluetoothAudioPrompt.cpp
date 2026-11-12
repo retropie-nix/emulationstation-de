@@ -28,7 +28,10 @@ BluetoothAudioPrompt& BluetoothAudioPrompt::getInstance()
 
 void BluetoothAudioPrompt::update()
 {
-    if (!Settings::getInstance()->getBool("BluetoothPromptAudio"))
+    const BluetoothAudioMode mode {BluetoothAudioPromptTracker::modeFromString(
+        Settings::getInstance()->getString("BluetoothAudioMode"))};
+
+    if (mode == BluetoothAudioMode::off)
         return;
 
     // The prompt belongs to the audio output selection, which only exists in strictly full UI mode.
@@ -64,9 +67,17 @@ void BluetoothAudioPrompt::update()
         return;
 
     const BluetoothAudioPromptTracker::Offer offer {
-        mTracker.update(*audio, *bluetooth, SDL_GetTicks())};
+        mTracker.update(*audio, *bluetooth, mode, SDL_GetTicks())};
 
-    if (offer.outputId.empty())
+    if (offer.action == BluetoothAudioOffer::switchOutput) {
+        // The auto mode switches without asking, and the device is reopened so that menu audio
+        // follows the new default.
+        AudioOutputManager::getInstance().setDefault(offer.outputId);
+        AudioManager::getInstance().requestAudioReopenForOutput(offer.outputId);
+        return;
+    }
+
+    if (offer.action != BluetoothAudioOffer::prompt)
         return;
 
     showPrompt(offer);
