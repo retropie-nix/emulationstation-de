@@ -130,7 +130,8 @@ public:
         NO_RULES
     };
 
-    void launchGame();
+    void launchGame(const std::string& selectedLabel = "");
+    std::string getDefaultLaunchPresetLabel();
     const std::pair<std::string, FileData::findEmulatorResult> findEmulator(std::string& command,
                                                                             const bool preCommand);
 
