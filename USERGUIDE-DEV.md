@@ -778,6 +778,24 @@ Note that the exFAT filesystem can't be used as it makes the theme downloader fa
 ![alt text](images/es-de_theme_downloader.png "ES-DE Theme Downloader")
 _The theme downloader with a number of installed themes._
 
+## Launch configurations
+
+Some game systems define more than one run configuration, for example a RetroArch core and a standalone emulator. Each configuration has a label, and the first one is used by default.
+
+When a game is launched, a splash screen is displayed while the emulator starts. Pressing a button during that time opens a selector with the available configurations, where the default one is highlighted. Select a configuration to start the game with it, or press BACK to cancel the launch and return to the gamelist. If no button is pressed, the default configuration starts when the splash delay expires.
+
+A per-game default can be set in the `launch_defaults.json` file in the `custom_systems` directory, for example:
+
+```json
+{
+  "snes": {
+    "Chrono Trigger.zip": "RetroArch (bsnes)"
+  }
+}
+```
+
+The outer key is the system name and the inner key is the game path relative to the system directory, as shown in the gamelist. When a game has no entry, or the referenced label no longer exists, the first configuration is used. The file is optional.
+
 ## Emulator setup
 
 ES-DE is a frontend application and does not provide any emulation by itself. It does however come preconfigured for use with emulators as setup in the `es_systems.xml` file. Most systems are by default configured to use [RetroArch](https://www.retroarch.com) but in many instances alternative standalone emulators can be selected instead as described elsewhere in this guide.

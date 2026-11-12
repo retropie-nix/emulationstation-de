@@ -1530,6 +1530,8 @@ For reference, here are also example es_find_rules.xml files for macOS and Windo
 
 The es_systems.xml file contains the game systems configuration data for ES-DE, written in XML format. This defines the system name, the full system name, the ROM path, the allowed file extensions, the launch command, the platform (for scraping) and the theme to use.
 
+A system may define several `<command>` tags, each with a `label` attribute. These are the run configurations shown in the launch configuration selector, and the first one is the default. Per-game defaults can be set in `custom_systems/launch_defaults.json` as described in the user guide.
+
 ES-DE ships with a comprehensive `es_systems.xml` file and most users will probably never need to make any customizations. But there may be special circumstances such as wanting to use different emulators for some game systems or perhaps to add additional systems altogether.
 
 To accomplish this, ES-DE supports customizations via a separate es_systems.xml file that is to be placed in the `custom_systems` folder in the application home directory, i.e. `~/ES-DE/custom_systems/es_systems.xml`. (The tilde symbol `~` translates to `$HOME` on Unix and macOS, and to `%HOMEPATH%` on Windows unless overridden via the --home command line option.)
