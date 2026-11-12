@@ -255,12 +255,18 @@ if(BUILD_TESTS)
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioOutputManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothAudioPromptTrackerTests.cpp
+                   # The prompt tracker is es-app code, but it only depends on the manager
+                   # interfaces, so its timing decisions are covered from here.
+                   ${CMAKE_CURRENT_SOURCE_DIR}/../es-app/src/BluetoothAudioPromptTracker.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioSinkListTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothMessageParserTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
-    target_include_directories(es-core-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+    target_include_directories(es-core-tests PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/tests
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../es-app/src)
     # Same link line as es-app, as linking es-core pulls in the static LunaSVG library.
     target_link_libraries(es-core-tests ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg)
     add_test(NAME es-core-tests COMMAND es-core-tests)

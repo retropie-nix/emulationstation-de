@@ -12,9 +12,7 @@
 #ifndef ES_APP_BLUETOOTH_AUDIO_PROMPT_H
 #define ES_APP_BLUETOOTH_AUDIO_PROMPT_H
 
-#include <cstdint>
-#include <set>
-#include <string>
+#include "BluetoothAudioPromptTracker.h"
 
 class BluetoothAudioPrompt
 {
@@ -27,14 +25,9 @@ public:
 private:
     BluetoothAudioPrompt() = default;
 
-    void showPrompt(const std::string& outputId, const std::string& deviceName);
+    void showPrompt(const BluetoothAudioPromptTracker::Offer& offer);
 
-    // The outputs that were already offered for their current connection. An output is forgotten
-    // again when it disappears from the snapshot, so that a later reconnection can be offered.
-    std::set<std::string> mOfferedOutputs;
-
-    std::uint64_t mAudioSequence {0};
-    std::uint64_t mBluetoothSequence {0};
+    BluetoothAudioPromptTracker mTracker;
     bool mPromptOpen {false};
 };
 
