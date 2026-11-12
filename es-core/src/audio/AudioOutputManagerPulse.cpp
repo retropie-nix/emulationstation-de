@@ -15,6 +15,7 @@
 #if defined(AUDIO_OUTPUT_PULSE)
 
 #include "Log.h"
+#include "audio/AudioSinkList.h"
 
 #include <pulse/pulseaudio.h>
 #include <sys/time.h>
@@ -57,6 +58,12 @@ namespace
 
     class PulseAudioOutputManager : public AudioOutputManager
     {
+        // Carries the generation of one sink list reply through its callbacks.
+        struct SinkListRequest {
+            PulseAudioOutputManager* manager {nullptr};
+            std::uint64_t generation {0};
+        };
+
     public:
         PulseAudioOutputManager()
         {
@@ -233,16 +240,39 @@ namespace
 
         void requestOutputs()
         {
-            mOutputs.clear();
+            const std::uint64_t generation {mSinkList.start()};
+            auto* request {new SinkListRequest {this, generation}};
 
-            pa_operation* operation {pa_context_get_sink_info_list(mContext, onSinkInfo, this)};
+            pa_operation* operation {pa_context_get_sink_info_list(mContext, onSinkInfo, request)};
             if (operation == nullptr) {
+                delete request;
+                mSinkList.discard(generation);
+
                 mLastError = "Could not read the audio outputs";
                 publish();
                 return;
             }
 
             pa_operation_unref(operation);
+        }
+
+        // A complete reply replaces the list, unless a newer request has superseded it.
+        void finishSinkList(const std::uint64_t generation)
+        {
+            std::vector<AudioOutput> outputs;
+            if (!mSinkList.take(generation, outputs))
+                return;
+
+            mOutputs = std::move(outputs);
+            publish();
+        }
+
+        void failSinkList(const std::uint64_t generation)
+        {
+            mSinkList.discard(generation);
+
+            mLastError = "Could not read the audio outputs";
+            publish();
         }
 
         void requestServerInfo()
@@ -350,9 +380,16 @@ namespace
             const pa_subscription_event_type_t facility {static_cast<pa_subscription_event_type_t>(
                 type & PA_SUBSCRIPTION_EVENT_FACILITY_MASK)};
 
-            // A sink appeared or went away.
+            // A sink appeared or went away. CHANGE events follow those and only report a property
+            // update, so re-listing on them would ask for the same list twice in a row.
             if (facility == PA_SUBSCRIPTION_EVENT_SINK) {
-                manager->requestOutputs();
+                const pa_subscription_event_type_t event {
+                    static_cast<pa_subscription_event_type_t>(type &
+                                                              PA_SUBSCRIPTION_EVENT_TYPE_MASK)};
+
+                if (event == PA_SUBSCRIPTION_EVENT_NEW || event == PA_SUBSCRIPTION_EVENT_REMOVE)
+                    manager->requestOutputs();
+
                 return;
             }
 
@@ -363,17 +400,18 @@ namespace
 
         static void onSinkInfo(pa_context*, const pa_sink_info* info, int end, void* userdata)
         {
-            auto* manager {static_cast<PulseAudioOutputManager*>(userdata)};
+            auto* request {static_cast<SinkListRequest*>(userdata)};
+            PulseAudioOutputManager* manager {request->manager};
+            const std::uint64_t generation {request->generation};
 
-            if (end < 0) {
-                manager->mLastError = "Could not read the audio outputs";
-                manager->publish();
-                return;
-            }
+            if (end != 0) {
+                delete request;
 
-            if (end > 0) {
-                // The list is complete, so what was collected can be published.
-                manager->publish();
+                if (end < 0)
+                    manager->failSinkList(generation);
+                else
+                    manager->finishSinkList(generation);
+
                 return;
             }
 
@@ -395,7 +433,7 @@ namespace
                     output.bluetoothAddress = device;
             }
 
-            manager->mOutputs.push_back(std::move(output));
+            manager->mSinkList.collect(generation, output);
         }
 
         static void onServerInfo(pa_context*, const pa_server_info* info, void* userdata)
@@ -447,6 +485,7 @@ namespace
         std::shared_ptr<const AudioSnapshot> mSnapshot;
 
         // Loop thread only.
+        AudioSinkList mSinkList;
         std::vector<AudioOutput> mOutputs;
         std::string mDefaultId;
         std::string mLastError;
