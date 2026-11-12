@@ -220,7 +220,9 @@ void GuiBluetoothSettings::openDeviceActions(const std::string& devicePath)
 
     addAction(_("PAIR"), !busy && !device->paired,
               [devicePath] { BluetoothManager::getInstance().pair(devicePath); });
-    addAction(_("CONNECT"), !busy && !device->connected,
+    // Connecting an unpaired device would make BlueZ pair it implicitly, which bypasses the trust
+    // the pair action sets up and is refused by the agent.
+    addAction(_("CONNECT"), !busy && device->paired && !device->connected,
               [devicePath] { BluetoothManager::getInstance().connect(devicePath); });
     addAction(_("DISCONNECT"), !busy && device->connected,
               [devicePath] { BluetoothManager::getInstance().disconnect(devicePath); });
