@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -32,6 +33,27 @@ namespace
     // pipewire-pulse does, so the first attempts are allowed to fail.
     constexpr unsigned int sFirstRetryDelay {500};
     constexpr unsigned int sMaxRetryDelay {30000};
+
+    // BlueZ addresses are six groups of two hex digits, and only such a device.string is taken as
+    // an address.
+    bool looksLikeBluetoothAddress(const std::string& text)
+    {
+        if (text.size() != 17)
+            return false;
+
+        for (std::size_t i {0}; i < text.size(); ++i) {
+            const bool isSeparator {i % 3 == 2};
+            if (isSeparator) {
+                if (text.at(i) != ':')
+                    return false;
+            }
+            else if (std::isxdigit(static_cast<unsigned char>(text.at(i))) == 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     class PulseAudioOutputManager : public AudioOutputManager
     {
@@ -360,6 +382,18 @@ namespace
                 output.id = info->name;
             if (info->description != nullptr)
                 output.description = info->description;
+
+            // PipeWire names the address in api.bluez5.address, while the native BlueZ modules only
+            // report the device in device.string.
+            if (info->proplist != nullptr) {
+                const char* address {pa_proplist_gets(info->proplist, "api.bluez5.address")};
+                const char* device {pa_proplist_gets(info->proplist, "device.string")};
+
+                if (address != nullptr)
+                    output.bluetoothAddress = address;
+                else if (device != nullptr && looksLikeBluetoothAddress(device))
+                    output.bluetoothAddress = device;
+            }
 
             manager->mOutputs.push_back(std::move(output));
         }
