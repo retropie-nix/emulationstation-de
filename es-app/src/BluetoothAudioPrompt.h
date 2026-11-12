@@ -14,6 +14,8 @@
 
 #include "BluetoothAudioPromptTracker.h"
 
+class GuiComponent;
+
 class BluetoothAudioPrompt
 {
 public:
@@ -28,7 +30,11 @@ private:
     void showPrompt(const BluetoothAudioPromptTracker::Offer& offer);
 
     BluetoothAudioPromptTracker mTracker;
-    bool mPromptOpen {false};
+
+    // The message box that is waiting for an answer, null when none is. Holding the component
+    // instead of a flag means that a box which disappears without a callback, which happens when
+    // the GUI stack is torn down, no longer suppresses the next prompt.
+    GuiComponent* mPromptGui {nullptr};
 };
 
 #endif // ES_APP_BLUETOOTH_AUDIO_PROMPT_H

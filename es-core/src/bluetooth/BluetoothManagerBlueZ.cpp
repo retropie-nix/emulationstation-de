@@ -25,6 +25,7 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
@@ -494,6 +495,12 @@ namespace
                 mBus = sd_bus_unref(mBus);
             }
             mEvent = sd_event_unref(mEvent);
+
+            // The replies of the calls that were still in flight will never be delivered now that
+            // the connection is gone.
+            for (FollowUp* followUp : mFollowUps)
+                delete followUp;
+            mFollowUps.clear();
         }
 
         void stop()
@@ -549,7 +556,9 @@ namespace
             };
 
             for (const char* match : matches) {
-                if (sd_bus_add_match(mBus, nullptr, match, onSignal, this) < 0) {
+                // The asynchronous form does not wait for the bus while the loop is starting up.
+                // The enumeration that follows the matches fills in whatever a signal missed.
+                if (sd_bus_add_match_async(mBus, nullptr, match, onSignal, nullptr, this) < 0) {
                     LOG(LogWarning) << "Bluetooth: could not subscribe to a signal: " << match;
                 }
             }
@@ -715,15 +724,14 @@ namespace
 
             sd_bus_message_append(message, "o", devicePath.c_str());
 
-            auto* followUp {new FollowUp {reportFailure ? Step::removed : Step::removedCleanup,
-                                          devicePath,
-                                          this}};
+            auto* followUp {
+                trackFollowUp(reportFailure ? Step::removed : Step::removedCleanup, devicePath)};
             const int result {
                 sd_bus_call_async(mBus, nullptr, message, onFollowUpReply, followUp, 0)};
             sd_bus_message_unref(message);
 
             if (result < 0) {
-                delete followUp;
+                freeFollowUp(followUp);
                 if (reportFailure) {
                     finishOperation(devicePath, true, "Could not reach the Bluetooth service");
                 }
@@ -823,6 +831,24 @@ namespace
             publish();
         }
 
+        // A completion callback owns one of these until its reply arrives. The ones still waiting
+        // when the loop stops are freed together in run().
+        FollowUp* trackFollowUp(const Step step, const std::string& devicePath)
+        {
+            auto* followUp {new FollowUp {step, devicePath, this}};
+            mFollowUps.push_back(followUp);
+            return followUp;
+        }
+
+        void freeFollowUp(FollowUp* followUp)
+        {
+            const auto found {std::find(mFollowUps.begin(), mFollowUps.end(), followUp)};
+            if (found != mFollowUps.end())
+                mFollowUps.erase(found);
+
+            delete followUp;
+        }
+
         // Calls a method that takes no arguments.
         void callMethod(const std::string& objectPath,
                         const char* interfaceName,
@@ -830,7 +856,7 @@ namespace
                         const Step step,
                         const std::string& devicePath)
         {
-            auto* followUp {new FollowUp {step, devicePath, this}};
+            auto* followUp {trackFollowUp(step, devicePath)};
 
             const int result {sd_bus_call_method_async(mBus,
                                                        nullptr,
@@ -842,7 +868,7 @@ namespace
                                                        followUp,
                                                        nullptr)};
             if (result < 0) {
-                delete followUp;
+                freeFollowUp(followUp);
                 finishOperation(devicePath, true, "Could not reach the Bluetooth service");
             }
         }
@@ -854,14 +880,14 @@ namespace
                       const std::string& devicePath,
                       const bool reportFailure = true)
         {
-            auto* followUp {new FollowUp {step, devicePath, this}};
+            auto* followUp {trackFollowUp(step, devicePath)};
 
             const int result {
                 sd_bus_call_async(mBus, nullptr, message, onFollowUpReply, followUp, 0)};
             sd_bus_message_unref(message);
 
             if (result < 0) {
-                delete followUp;
+                freeFollowUp(followUp);
                 if (reportFailure) {
                     finishOperation(devicePath, true, "Could not reach the Bluetooth service");
                 }
@@ -931,12 +957,18 @@ namespace
                     break;
 
                 case Step::agentRegistered:
+                    mAgentPending = false;
+
                     if (failed) {
                         LOG(LogWarning) << "Bluetooth: could not register the pairing agent: "
                                         << error;
                     }
                     else {
                         mAgentRegistered = true;
+
+                        // Pairing may have been turned off while the reply was on its way.
+                        if (!mPairingEnabled)
+                            unregisterAgent();
                     }
                     break;
 
@@ -974,9 +1006,20 @@ namespace
             mPairingEnabled = enabled;
 
             if (enabled)
-                registerAgent();
+                registerAgentIfNeeded();
             else
                 unregisterAgent();
+        }
+
+        // Registration needs the adapter path, which is only known once BlueZ has been enumerated.
+        // The pending flag keeps the paths that can complete a late registration from sending the
+        // call twice while its reply is in flight.
+        void registerAgentIfNeeded()
+        {
+            if (!mPairingEnabled || mAdapterPath.empty() || mAgentRegistered || mAgentPending)
+                return;
+
+            registerAgent();
         }
 
         void registerAgent()
@@ -1008,6 +1051,7 @@ namespace
                                                sAgentManagerInterface,
                                                "RegisterAgent") == 0) {
                 sd_bus_message_append(message, "os", sAgentPath, sAgentCapability);
+                mAgentPending = true;
                 sendCall(message, Step::agentRegistered, std::string {}, false);
             }
 
@@ -1049,6 +1093,7 @@ namespace
                 mAgentSlot = sd_bus_slot_unref(mAgentSlot);
 
             mAgentRegistered = false;
+            mAgentPending = false;
             setPairable(false);
         }
 
@@ -1094,6 +1139,7 @@ namespace
         {
             auto* manager {static_cast<BlueZBluetoothManager*>(userdata)};
             manager->mAgentRegistered = false;
+            manager->mAgentPending = false;
             LOG(LogWarning) << "Bluetooth: the pairing agent was released by the Bluetooth service";
 
             return sd_bus_reply_method_return(message, nullptr);
@@ -1236,11 +1282,9 @@ namespace
                 setPairable(false);
             }
 
-            if (mReregisterAgent && !mAdapterPath.empty()) {
-                // The registration belongs to bluetoothd, which forgot it when it restarted.
-                mReregisterAgent = false;
-                registerAgent();
-            }
+            // Completes a pairing mode that was enabled before the adapter was known, and redoes a
+            // registration that bluetoothd lost when it restarted.
+            registerAgentIfNeeded();
         }
 
         void setError(const std::string& error)
@@ -1285,10 +1329,26 @@ namespace
 
             for (const Command& command : commands) {
                 switch (command.type) {
-                    case Command::Type::stop:
+                    case Command::Type::stop: {
+                        // The device that was being paired was trusted before the pair started, so
+                        // a pair that is cut short leaves an entry that BlueZ accepts without the
+                        // agent. Removing it is the same cleanup a failed pair gets.
+                        std::vector<std::string> pairingDevices;
+                        for (const auto& operation : mActiveOperations) {
+                            if (operation.second == BluetoothOp::pairing)
+                                pairingDevices.push_back(operation.first);
+                        }
+
                         cancelPendingOperations();
+
+                        if (mBus != nullptr && !mAdapterPath.empty()) {
+                            for (const std::string& devicePath : pairingDevices)
+                                removeDevice(devicePath, false);
+                        }
+
                         sd_event_exit(mEvent, 0);
                         return;
+                    }
 
                     case Command::Type::refresh:
                         requestManagedObjects();
@@ -1359,6 +1419,10 @@ namespace
 
             mState.applyInterfacesAdded(path, interfaces);
             publish();
+
+            // An adapter that is plugged in or enabled while the screen is open is as good a
+            // moment to register the agent as the initial enumeration.
+            registerAgentIfNeeded();
         }
 
         void handleInterfacesRemoved(sd_bus_message* message)
@@ -1406,13 +1470,15 @@ namespace
             if (name == nullptr || std::strcmp(name, sBlueZService) != 0)
                 return;
 
+            // The registration belongs to bluetoothd, so a new instance has forgotten it whatever
+            // happened to the old one.
+            mAgentRegistered = false;
+            mAgentPending = false;
+
             // bluetoothd restarted, so every object it knew is gone. Its name coming back means the
             // new instance has to be enumerated; the matches survive, they belong to our
-            // connection. Re-registering the pairing agent is done by the pairing agent itself.
+            // connection. The agent is re-registered once the adapter is known again.
             if (newOwner != nullptr && newOwner[0] != '\0') {
-                // The registration belongs to bluetoothd, so it is redone once the objects are
-                // there again: both the agent and Pairable need the adapter path.
-                mReregisterAgent = mPairingEnabled;
                 requestManagedObjects();
                 return;
             }
@@ -1497,7 +1563,7 @@ namespace
             }
 
             manager->handleReply(*followUp, failed, error);
-            delete followUp;
+            manager->freeFollowUp(followUp);
             return 0;
         }
 
@@ -1524,9 +1590,12 @@ namespace
         BluetoothState mState;
         bool mPairingEnabled {false};
         bool mAgentRegistered {false};
-        bool mReregisterAgent {false};
+        bool mAgentPending {false};
         bool mStartupStateCleared {false};
         sd_bus_slot* mAgentSlot {nullptr};
+
+        // Loop thread only. The calls whose replies have not arrived yet.
+        std::vector<FollowUp*> mFollowUps;
     };
 
 } // namespace
