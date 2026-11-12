@@ -24,6 +24,7 @@
 #include "UIModeController.h"
 #include "VolumeControl.h"
 #include "audio/AudioOutputManager.h"
+#include "bluetooth/BluetoothManager.h"
 #include "components/OptionListComponent.h"
 #include "components/SliderComponent.h"
 #include "components/SwitchComponent.h"
@@ -152,8 +153,10 @@ GuiMenu::GuiMenu()
                  [this] { openInputDeviceOptions(); });
 
     // Strictly full UI mode: unlike the other settings entries this one also has to stay out of
-    // kid mode when EnableMenuKidMode is set.
-    if (isFullUI && !UIModeController::getInstance()->isUIModeKid())
+    // kid mode when EnableMenuKidMode is set. The entry also needs a real backend, so a build
+    // without Bluetooth support looks exactly like it did before the feature existed.
+    if (isFullUI && !UIModeController::getInstance()->isUIModeKid() &&
+        BluetoothManager::hasBackend())
         addEntry(_("BLUETOOTH"), mMenuColorPrimary, true, [this] { openBluetoothSettings(); });
 
     if (isFullUI)

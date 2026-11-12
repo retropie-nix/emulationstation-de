@@ -252,6 +252,33 @@ TEST_CASE(devicesAreOrderedBySignalStrength)
     EXPECT(snapshot.devices.at(2).name == "unknown");
 }
 
+TEST_CASE(devicesAreOrderedByConnectionState)
+{
+    BluetoothState state;
+    state.setManagedObjects(singleAdapter(false));
+
+    // The stranger has the strongest signal, the paired device a weak one and the connected device
+    // reports no signal at all, so an order by signal strength alone would list them the other way
+    // around.
+    state.applyInterfacesAdded(devicePath, deviceInterfaces(deviceProperties("stranger", "", -20)));
+    state.applyInterfacesAdded(secondDevicePath,
+                               deviceInterfaces(deviceProperties("paired", "", -60, true)));
+
+    BluetoothProperties connected {deviceProperties("connected", "", 0, true)};
+    connected["Connected"] = true;
+    state.applyInterfacesAdded(thirdDevicePath, deviceInterfaces(connected));
+
+    const BluetoothSnapshot snapshot {state.toSnapshot(1)};
+
+    EXPECT(snapshot.devices.size() == 3);
+    if (snapshot.devices.size() != 3)
+        return;
+
+    EXPECT(snapshot.devices.at(0).name == "connected");
+    EXPECT(snapshot.devices.at(1).name == "paired");
+    EXPECT(snapshot.devices.at(2).name == "stranger");
+}
+
 TEST_CASE(devicesAreClassified)
 {
     BluetoothDevice device;
