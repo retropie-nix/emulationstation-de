@@ -23,6 +23,7 @@
 #include "SystemData.h"
 #include "UIModeController.h"
 #include "VolumeControl.h"
+#include "audio/AudioOutputManager.h"
 #include "components/OptionListComponent.h"
 #include "components/SliderComponent.h"
 #include "components/SwitchComponent.h"
@@ -54,6 +55,82 @@
 
 #include <SDL2/SDL_events.h>
 #include <algorithm>
+
+namespace
+{
+    // The audio output picker of the sound settings. Selecting an output changes the sound server's
+    // default right away, and the entries are rebuilt when the manager publishes a new snapshot, so
+    // a Bluetooth sink that appears while the screen is open shows up in the list.
+    class AudioOutputComponent : public OptionListComponent<std::string>
+    {
+    public:
+        AudioOutputComponent()
+            : OptionListComponent<std::string>(_("AUDIO OUTPUT"), false)
+        {
+            // The list is filled before the callback is set, so that adding the entries does not
+            // look like a selection.
+            rebuild();
+
+            setCallback([this](const std::string& outputId) {
+                if (!mRebuilding)
+                    AudioOutputManager::getInstance().setDefault(outputId);
+            });
+        }
+
+        void update(int deltaTime) override
+        {
+            OptionListComponent<std::string>::update(deltaTime);
+
+            if (AudioOutputManager::getInstance().getSequence() != mSequence)
+                rebuild();
+        }
+
+    private:
+        void rebuild()
+        {
+            AudioOutputManager& manager {AudioOutputManager::getInstance()};
+            const std::shared_ptr<const AudioSnapshot> snapshot {manager.getSnapshot()};
+            mSequence = manager.getSequence();
+
+            if (snapshot == nullptr)
+                return;
+
+            // Filling the entries fires the selection callback, which must not reach the manager.
+            mRebuilding = true;
+            clearEntries();
+
+            if (snapshot->outputs.empty()) {
+                // The row is already on the screen, so it has to say something even when the sound
+                // server is gone.
+                add(_("NO AUDIO OUTPUTS"), std::string {}, true);
+                mRebuilding = false;
+                return;
+            }
+
+            bool foundDefault {false};
+            for (const AudioOutput& output : snapshot->outputs) {
+                const bool isDefault {!snapshot->defaultId.empty() &&
+                                      output.id == snapshot->defaultId};
+                foundDefault = foundDefault || isDefault;
+
+                const std::string label {output.description.empty() ? output.id :
+                                                                     output.description};
+                add(label, output.id, isDefault);
+            }
+
+            // When the default output is not part of the list any more nothing would be selected,
+            // and the row would keep showing the old text.
+            if (!foundDefault)
+                selectEntry(0);
+
+            mRebuilding = false;
+        }
+
+        std::uint64_t mSequence {0};
+        bool mRebuilding {false};
+    };
+
+} // namespace
 
 GuiMenu::GuiMenu()
     : mRenderer {Renderer::getInstance()}
@@ -1263,6 +1340,14 @@ void GuiMenu::openSoundOptions()
         }
     });
 #endif
+
+    // Audio output. Choosing one changes the sound server's default, which the navigation sounds
+    // and the games follow, so there is nothing to save when the screen closes.
+    if (UIModeController::getInstance()->isUIModeFull() &&
+        !UIModeController::getInstance()->isUIModeKid() &&
+        AudioOutputManager::getInstance().isAvailable()) {
+        s->addWithLabel(_("AUDIO OUTPUT"), std::make_shared<AudioOutputComponent>());
+    }
 
 // TODO: Implement system volume support for macOS and Android.
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__FreeBSD__) && !defined(__HAIKU__)
