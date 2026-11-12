@@ -21,8 +21,16 @@
 GuiBluetoothSettings::GuiBluetoothSettings()
     : GuiSettings {_("BLUETOOTH")}
 {
+    BluetoothManager& manager {BluetoothManager::getInstance()};
+
+    // An error that predates the screen belongs to an earlier attempt. Seeding the mirror keeps
+    // update() from showing it again every time the screen is opened.
+    const std::shared_ptr<const BluetoothSnapshot> snapshot {manager.getSnapshot()};
+    if (snapshot != nullptr)
+        mLastError = snapshot->lastError;
+
     // While this screen is open the frontend is the pairing agent and the adapter is pairable.
-    BluetoothManager::getInstance().setPairingEnabled(true);
+    manager.setPairingEnabled(true);
     rebuild();
 }
 

@@ -43,9 +43,14 @@ void BluetoothAudioPrompt::update()
         return;
 
     // One prompt at a time. The next observation after the answer starts the grace period of
-    // whatever else is waiting.
-    if (mPromptOpen)
-        return;
+    // whatever else is waiting. A box that is no longer on the screen never got its callback, so
+    // it must not keep the next prompt away.
+    if (mPromptGui != nullptr) {
+        if (window->peekGui() == mPromptGui)
+            return;
+
+        mPromptGui = nullptr;
+    }
 
     const std::shared_ptr<const AudioSnapshot> audio {
         AudioOutputManager::getInstance().getSnapshot()};
@@ -72,15 +77,16 @@ void BluetoothAudioPrompt::showPrompt(const BluetoothAudioPromptTracker::Offer& 
                                                        Utils::String::toUpper(offer.deviceName)};
     const std::string outputId {offer.outputId};
 
-    mPromptOpen = true;
-
-    Window::getInstance()->pushGui(new GuiMsgBox(
+    auto* box {new GuiMsgBox(
         Utils::String::format(_("%s IS CONNECTED. USE IT AS THE AUDIO OUTPUT?"), name.c_str()),
         _("YES"),
         [this, outputId] {
-            mPromptOpen = false;
+            mPromptGui = nullptr;
             AudioOutputManager::getInstance().setDefault(outputId);
         },
-        _("NO"), [this] { mPromptOpen = false; }, "", nullptr, "", nullptr,
-        [this] { mPromptOpen = false; }));
+        _("NO"), [this] { mPromptGui = nullptr; }, "", nullptr, "", nullptr,
+        [this] { mPromptGui = nullptr; })};
+
+    mPromptGui = box;
+    Window::getInstance()->pushGui(box);
 }

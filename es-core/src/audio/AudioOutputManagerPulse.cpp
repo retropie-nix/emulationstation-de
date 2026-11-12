@@ -113,6 +113,11 @@ namespace
                 // them while the members are being torn down.
                 pa_context_set_state_callback(mContext, nullptr, nullptr);
                 pa_context_set_subscribe_callback(mContext, nullptr, nullptr);
+
+                // The replies of the list requests that are still running will never be delivered
+                // once the callbacks are detached.
+                cancelSinkRequests();
+
                 pa_context_disconnect(mContext);
                 pa_context_unref(mContext);
                 mContext = nullptr;
@@ -238,14 +243,42 @@ namespace
             mRetryDelay = std::min(mRetryDelay * 2, sMaxRetryDelay);
         }
 
+        // A list request owns one of these until its reply ends. The ones still running when the
+        // context goes away are freed together in cancelSinkRequests().
+        SinkListRequest* trackSinkRequest(const std::uint64_t generation)
+        {
+            auto* request {new SinkListRequest {this, generation}};
+            mSinkRequests.push_back(request);
+            return request;
+        }
+
+        void freeSinkRequest(SinkListRequest* request)
+        {
+            const auto found {std::find(mSinkRequests.begin(), mSinkRequests.end(), request)};
+            if (found != mSinkRequests.end())
+                mSinkRequests.erase(found);
+
+            delete request;
+        }
+
+        void cancelSinkRequests()
+        {
+            for (SinkListRequest* request : mSinkRequests) {
+                mSinkList.discard(request->generation);
+                delete request;
+            }
+
+            mSinkRequests.clear();
+        }
+
         void requestOutputs()
         {
             const std::uint64_t generation {mSinkList.start()};
-            auto* request {new SinkListRequest {this, generation}};
+            SinkListRequest* request {trackSinkRequest(generation)};
 
             pa_operation* operation {pa_context_get_sink_info_list(mContext, onSinkInfo, request)};
             if (operation == nullptr) {
-                delete request;
+                freeSinkRequest(request);
                 mSinkList.discard(generation);
 
                 mLastError = "Could not read the audio outputs";
@@ -299,6 +332,9 @@ namespace
             mAvailable = false;
             mOutputs.clear();
             mDefaultId.clear();
+
+            // A list that was being read when the context went away will never finish.
+            cancelSinkRequests();
 
             if (mContext != nullptr) {
                 pa_context_set_state_callback(mContext, nullptr, nullptr);
@@ -405,7 +441,7 @@ namespace
             const std::uint64_t generation {request->generation};
 
             if (end != 0) {
-                delete request;
+                manager->freeSinkRequest(request);
 
                 if (end < 0)
                     manager->failSinkList(generation);
@@ -486,6 +522,8 @@ namespace
 
         // Loop thread only.
         AudioSinkList mSinkList;
+        // The sink list requests whose replies have not ended yet.
+        std::vector<SinkListRequest*> mSinkRequests;
         std::vector<AudioOutput> mOutputs;
         std::string mDefaultId;
         std::string mLastError;

@@ -91,7 +91,10 @@ namespace
         {
             AudioOutputManager& manager {AudioOutputManager::getInstance()};
             const std::shared_ptr<const AudioSnapshot> snapshot {manager.getSnapshot()};
-            mSequence = manager.getSequence();
+
+            // The snapshot's own sequence, so that the entries on the screen cannot be older than
+            // the sequence recorded for them.
+            mSequence = snapshot != nullptr ? snapshot->sequence : manager.getSequence();
 
             if (snapshot == nullptr)
                 return;
