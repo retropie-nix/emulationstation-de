@@ -579,23 +579,21 @@ namespace
         //------------------------------------------------------------------------------------------
         // Actions, everything below runs on the loop thread.
 
+        // Powered is a property of Adapter1, there is no SetPowered method. A refused write is
+        // reported by the reply handler through the error mapping, which is what turns a blocked
+        // adapter into "The Bluetooth adapter is blocked".
         void performSetPowered(const bool powered)
         {
             if (!hasAdapter())
                 return;
 
-            sd_bus_message* message {nullptr};
-            if (sd_bus_message_new_method_call(mBus,
-                                               &message,
-                                               sBlueZService,
-                                               mAdapterPath.c_str(),
-                                               sAdapterInterface,
-                                               "SetPowered") < 0) {
+            sd_bus_message* message {newPropertySet(mAdapterPath, sAdapterInterface, "Powered")};
+            if (message == nullptr) {
                 setError("Could not reach the Bluetooth service");
                 return;
             }
 
-            sd_bus_message_append(message, "b", powered ? 1 : 0);
+            appendBooleanVariant(message, powered);
             sendCall(message, Step::powered, std::string {});
         }
 
