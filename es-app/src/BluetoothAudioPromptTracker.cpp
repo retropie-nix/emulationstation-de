@@ -46,9 +46,20 @@ const BluetoothDevice* BluetoothAudioPromptTracker::findAudioDevice(
     return nullptr;
 }
 
+BluetoothAudioMode BluetoothAudioPromptTracker::modeFromString(const std::string& value)
+{
+    if (value == "auto")
+        return BluetoothAudioMode::autoSwitch;
+    if (value == "off")
+        return BluetoothAudioMode::off;
+
+    return BluetoothAudioMode::ask;
+}
+
 BluetoothAudioPromptTracker::Offer BluetoothAudioPromptTracker::update(
     const AudioSnapshot& audio,
     const BluetoothSnapshot& bluetooth,
+    const BluetoothAudioMode mode,
     const std::uint32_t now)
 {
     // A sink that is gone was disconnected, so both its grace period and the fact that it was
@@ -98,10 +109,17 @@ BluetoothAudioPromptTracker::Offer BluetoothAudioPromptTracker::update(
             continue;
 
         if (static_cast<std::uint32_t>(now - sink.firstSeen) >= sGracePeriod) {
+            // With the off mode the device is never offered, but neither is it remembered as
+            // offered, so turning the setting back on can still offer it for this connection.
+            if (mode == BluetoothAudioMode::off)
+                return offer;
+
             sink.offered = true;
 
             offer.outputId = output.id;
             offer.deviceName = device->name.empty() ? output.description : device->name;
+            offer.action = mode == BluetoothAudioMode::autoSwitch ? BluetoothAudioOffer::switchOutput :
+                                                                   BluetoothAudioOffer::prompt;
 
             return offer;
         }

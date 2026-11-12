@@ -24,6 +24,22 @@
 #include <map>
 #include <string>
 
+// What the frontend does with a connected Bluetooth audio device.
+enum class BluetoothAudioMode {
+    ask,
+    autoSwitch,
+    off
+};
+
+enum class BluetoothAudioOffer {
+    // Nothing to offer.
+    none,
+    // Show the "use as audio output" message box.
+    prompt,
+    // Make the device the default without asking.
+    switchOutput
+};
+
 class BluetoothAudioPromptTracker
 {
 public:
@@ -31,15 +47,21 @@ public:
         // Empty when there is nothing to offer.
         std::string outputId;
         std::string deviceName;
+        BluetoothAudioOffer action {BluetoothAudioOffer::none};
     };
 
     // How long a sink has to be present and not the default before it may be offered.
     static constexpr std::uint32_t sGracePeriod {3000};
 
-    // Feeds one observation of both managers. Returns the output to offer now, if any. An output
-    // that is offered is remembered, so it is not offered again while it stays connected.
+    // Reads the BluetoothAudioMode setting. Anything unknown is the default, asking.
+    static BluetoothAudioMode modeFromString(const std::string& value);
+
+    // Feeds one observation of both managers. Returns what to do with the output that is due, if
+    // any. An output that is offered is remembered, so it is not offered again while it stays
+    // connected. With the off mode nothing is ever offered.
     Offer update(const AudioSnapshot& audio,
                  const BluetoothSnapshot& bluetooth,
+                 BluetoothAudioMode mode,
                  std::uint32_t now);
 
 private:
