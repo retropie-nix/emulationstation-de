@@ -90,6 +90,18 @@ public:
     BluetoothManager(const BluetoothManager&) = delete;
     BluetoothManager& operator=(const BluetoothManager&) = delete;
 
+    // True when the build has a real backend, which is a compile time property and not something
+    // that changes: the null implementation never has one. A UI uses this to decide whether to
+    // offer a feature at all, while isAvailable() reports whether the service can be reached now.
+    static constexpr bool hasBackend()
+    {
+#if defined(BLUETOOTH_MANAGER_BLUEZ)
+        return true;
+#else
+        return false;
+#endif
+    }
+
     // False in builds without a backend and, with a backend, while no adapter is present.
     virtual bool isAvailable() const = 0;
 

@@ -66,10 +66,19 @@ void GuiBluetoothSettings::update(int deltaTime)
         mScanElapsed = 0;
     }
 
-    // The manager publishes a new snapshot for every change, including the progress of the
-    // operations, so the rows are rebuilt from it.
-    if (snapshot->sequence != mSequence) {
+    // The manager publishes a new snapshot for every change, the signal strength and the battery of
+    // every device included, so rebuilding on each of them would move the list under the cursor.
+    // The state the user acts on is applied immediately and everything else waits for the next
+    // rebuild at most half a second away.
+    if (snapshot->sequence == mSequence)
+        return;
+
+    mRebuildElapsed += deltaTime;
+
+    const std::string immediate {immediateState(*snapshot)};
+    if (immediate != mImmediateState || mRebuildElapsed >= sRebuildInterval) {
         mSequence = snapshot->sequence;
+        mRebuildElapsed = 0;
         rebuild();
     }
 }
@@ -81,7 +90,22 @@ void GuiBluetoothSettings::rebuild()
 
     const std::shared_ptr<ComponentList> list {getMenu().getList()};
     const int previousCursor {list->getCursorId()};
+    const std::string cursorDevice {(previousCursor >= 0 &&
+                                     previousCursor < static_cast<int>(mRowDevices.size())) ?
+                                        mRowDevices.at(previousCursor) :
+                                        std::string {}};
+
     list->clear();
+    mRowDevices.clear();
+
+    // Every row is added through this, so that the device behind it is known and the cursor can be
+    // put back on the same device after the rows above it changed.
+    auto addRow = [this](const ComponentListRow& row, const std::string& devicePath) {
+        mRowDevices.push_back(devicePath);
+        getMenu().addRow(row);
+    };
+
+    mImmediateState = snapshot == nullptr ? std::string {} : immediateState(*snapshot);
 
     if (snapshot == nullptr || !snapshot->available) {
         ComponentListRow row;
@@ -89,7 +113,7 @@ void GuiBluetoothSettings::rebuild()
                                                        Font::get(FONT_SIZE_MEDIUM),
                                                        mMenuColorSecondary, ALIGN_LEFT),
                        true);
-        getMenu().addRow(row);
+        addRow(row, std::string {});
         return;
     }
 
@@ -106,7 +130,7 @@ void GuiBluetoothSettings::rebuild()
                                                         mMenuColorPrimary, ALIGN_LEFT),
                         true);
     powerRow.addElement(powerSwitch, false);
-    getMenu().addRow(powerRow);
+    addRow(powerRow, std::string {});
 
     ComponentListRow adapterRow;
     adapterRow.addElement(std::make_shared<TextComponent>(snapshot->adapterName + " (" +
@@ -114,7 +138,7 @@ void GuiBluetoothSettings::rebuild()
                                                           Font::get(FONT_SIZE_SMALL),
                                                           mMenuColorSecondary, ALIGN_LEFT),
                           true);
-    getMenu().addRow(adapterRow);
+    addRow(adapterRow, std::string {});
 
     if (snapshot->powered) {
         ComponentListRow scanRow;
@@ -134,7 +158,7 @@ void GuiBluetoothSettings::rebuild()
         }
 
         scanRow.makeAcceptInputHandler([this] { toggleScan(); });
-        getMenu().addRow(scanRow);
+        addRow(scanRow, std::string {});
     }
 
     for (const BluetoothDevice& device : snapshot->devices) {
@@ -151,16 +175,26 @@ void GuiBluetoothSettings::rebuild()
 
         const std::string devicePath {device.path};
         row.makeAcceptInputHandler([this, devicePath] { openDeviceActions(devicePath); });
-        getMenu().addRow(row);
+        addRow(row, devicePath);
     }
 
-    // Stay on the same row while the list changes underneath.
-    const int rows {list->size()};
-    if (previousCursor > 0 && rows > 0) {
-        const int target {std::min(previousCursor, rows - 1)};
-        if (target != list->getCursorId())
-            list->moveCursor(target - list->getCursorId());
+    // Stay on the same device while the list changes underneath. The row index is only a fallback,
+    // because the adapter and scan rows move when the adapter is powered on or off.
+    const int rows {static_cast<int>(mRowDevices.size())};
+    if (rows == 0)
+        return;
+
+    int target {std::clamp(previousCursor, 0, rows - 1)};
+
+    if (!cursorDevice.empty()) {
+        const auto found {std::find(mRowDevices.cbegin(), mRowDevices.cend(), cursorDevice)};
+
+        if (found != mRowDevices.cend())
+            target = static_cast<int>(found - mRowDevices.cbegin());
     }
+
+    if (target != list->getCursorId())
+        list->moveCursor(target - list->getCursorId());
 }
 
 void GuiBluetoothSettings::openDeviceActions(const std::string& devicePath)
@@ -245,6 +279,26 @@ void GuiBluetoothSettings::toggleScan()
         manager.stopDiscovery();
     else
         manager.startDiscovery();
+}
+
+std::string GuiBluetoothSettings::immediateState(const BluetoothSnapshot& snapshot)
+{
+    std::string state;
+    state += snapshot.available ? '1' : '0';
+    state += snapshot.powered ? '1' : '0';
+    state += snapshot.discovering ? '1' : '0';
+
+    // A device that changes what it is doing has to show up at once, and so does the moment its
+    // operation ends. The signal strength and the battery can wait for the next rebuild.
+    for (const BluetoothDevice& device : snapshot.devices) {
+        if (device.pending == BluetoothOp::none)
+            continue;
+
+        state += device.path;
+        state += static_cast<char>('0' + static_cast<int>(device.pending));
+    }
+
+    return state;
 }
 
 std::string GuiBluetoothSettings::deviceLabel(const BluetoothDevice& device)

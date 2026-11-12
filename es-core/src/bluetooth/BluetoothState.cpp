@@ -122,19 +122,39 @@ namespace
         return nullptr;
     }
 
-    bool sortBySignalStrength(const BluetoothDevice& left, const BluetoothDevice& right)
+    // Connected devices come first, then the paired ones, then everything a scan turned up. A
+    // device that is known must not move to another place in the list while it is scanned.
+    int deviceGroup(const BluetoothDevice& device)
     {
-        // The strongest signal first. A device without an RSSI (0) sorts after the ones that
-        // report one, which is correct because RSSI values are negative.
-        const int leftRssi {
-            left.rssi == 0 ? std::numeric_limits<int>::min() : left.rssi};
-        const int rightRssi {
-            right.rssi == 0 ? std::numeric_limits<int>::min() : right.rssi};
+        if (device.connected)
+            return 0;
+        if (device.paired)
+            return 1;
 
-        if (leftRssi != rightRssi)
-            return leftRssi > rightRssi;
+        return 2;
+    }
+
+    bool sortDevices(const BluetoothDevice& left, const BluetoothDevice& right)
+    {
+        const int leftGroup {deviceGroup(left)};
+        const int rightGroup {deviceGroup(right)};
+
+        if (leftGroup != rightGroup)
+            return leftGroup < rightGroup;
+
+        // Only the scan results move with the signal. A device without an RSSI (0) sorts after the
+        // ones that report one, which is correct because RSSI values are negative.
+        if (leftGroup == 2) {
+            const int leftRssi {left.rssi == 0 ? std::numeric_limits<int>::min() : left.rssi};
+            const int rightRssi {right.rssi == 0 ? std::numeric_limits<int>::min() : right.rssi};
+
+            if (leftRssi != rightRssi)
+                return leftRssi > rightRssi;
+        }
+
         if (left.name != right.name)
             return left.name < right.name;
+
         return left.path < right.path;
     }
 
@@ -295,7 +315,7 @@ BluetoothSnapshot BluetoothState::toSnapshot(const std::uint64_t sequence) const
         snapshot.devices.push_back(std::move(entry));
     }
 
-    std::sort(snapshot.devices.begin(), snapshot.devices.end(), sortBySignalStrength);
+    std::sort(snapshot.devices.begin(), snapshot.devices.end(), sortDevices);
 
     return snapshot;
 }
