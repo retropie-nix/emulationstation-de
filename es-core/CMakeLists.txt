@@ -30,6 +30,7 @@ set(CORE_HEADERS
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothMessageParser.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.h
 
     # Animations
@@ -253,6 +254,7 @@ if(BUILD_TESTS)
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioOutputManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothMessageParserTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
     target_include_directories(es-core-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)

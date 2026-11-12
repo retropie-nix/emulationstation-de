@@ -16,6 +16,7 @@
 #if defined(BLUETOOTH_MANAGER_BLUEZ)
 
 #include "Log.h"
+#include "bluetooth/BluetoothMessageParser.h"
 #include "bluetooth/BluetoothState.h"
 
 #include <systemd/sd-bus.h>
@@ -154,6 +155,10 @@ namespace
         }
     }
 
+} // namespace
+
+namespace BluetoothMessageParser
+{
     // Reads an a{sv} dictionary, skipping the values that cannot be reduced.
     bool readProperties(sd_bus_message* message, BluetoothProperties& properties)
     {
@@ -173,11 +178,32 @@ namespace
             if (sd_bus_message_read(message, "s", &name) < 0)
                 return false;
 
-            BluetoothPropertyValue value;
-            if (readPropertyValue(message, value))
-                properties[name] = std::move(value);
-            else if (sd_bus_message_skip(message, nullptr) < 0)
-                return false;
+            // Every value of an a{sv} is wrapped in a variant, and the type of the value is only
+            // known from the signature of that variant.
+            char type {0};
+            const char* contents {nullptr};
+
+            const bool isVariant {sd_bus_message_peek_type(message, &type, &contents) >= 0 &&
+                                  type == SD_BUS_TYPE_VARIANT &&
+                                  sd_bus_message_enter_container(message,
+                                                                 SD_BUS_TYPE_VARIANT,
+                                                                 contents) >= 0};
+
+            if (isVariant) {
+                BluetoothPropertyValue value;
+                if (readPropertyValue(message, value))
+                    properties[name] = std::move(value);
+                else if (sd_bus_message_skip(message, nullptr) < 0)
+                    return false;
+
+                if (sd_bus_message_exit_container(message) < 0)
+                    return false;
+            }
+            else {
+                // Not a variant at all, so consume it to leave the dictionary balanced.
+                if (sd_bus_message_skip(message, nullptr) < 0)
+                    return false;
+            }
 
             if (sd_bus_message_exit_container(message) < 0)
                 return false;
@@ -251,6 +277,10 @@ namespace
         return sd_bus_message_exit_container(message) >= 0;
     }
 
+} // namespace BluetoothMessageParser
+
+namespace
+{
     // Reads an "as".
     bool readStringArray(sd_bus_message* message, std::vector<std::string>& strings)
     {
@@ -1325,7 +1355,8 @@ namespace
                 return;
 
             BluetoothInterfaces interfaces;
-            if (!readInterfaces(message, interfaces) || interfaces.empty())
+            if (!BluetoothMessageParser::readInterfaces(message, interfaces) ||
+                interfaces.empty())
                 return;
 
             mState.applyInterfacesAdded(path, interfaces);
@@ -1354,7 +1385,7 @@ namespace
                 return;
 
             BluetoothProperties changed;
-            if (!readProperties(message, changed))
+            if (!BluetoothMessageParser::readProperties(message, changed))
                 return;
 
             std::vector<std::string> invalidated;
@@ -1441,7 +1472,7 @@ namespace
             }
 
             BluetoothObjectMap objects;
-            if (!readManagedObjects(message, objects)) {
+            if (!BluetoothMessageParser::readManagedObjects(message, objects)) {
                 manager->setError("Could not read the Bluetooth devices");
                 return 0;
             }
