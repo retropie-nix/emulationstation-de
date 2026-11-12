@@ -15,6 +15,7 @@
 #endif
 
 #include "ApplicationVersion.h"
+#include "AudioManager.h"
 #include "CollectionSystemsManager.h"
 #include "FileFilterIndex.h"
 #include "FileSorts.h"
@@ -23,10 +24,13 @@
 #include "SystemData.h"
 #include "UIModeController.h"
 #include "VolumeControl.h"
+#include "audio/AudioOutputManager.h"
+#include "bluetooth/BluetoothManager.h"
 #include "components/OptionListComponent.h"
 #include "components/SliderComponent.h"
 #include "components/SwitchComponent.h"
 #include "guis/GuiAlternativeEmulators.h"
+#include "guis/GuiBluetoothSettings.h"
 #include "guis/GuiCollectionSystemsOptions.h"
 #include "guis/GuiDetectDevice.h"
 #include "guis/GuiGameImporter.h"
@@ -54,6 +58,90 @@
 #include <SDL2/SDL_events.h>
 #include <algorithm>
 
+namespace
+{
+    // The audio output picker of the sound settings. Selecting an output changes the sound server's
+    // default right away, and the entries are rebuilt when the manager publishes a new snapshot, so
+    // a Bluetooth sink that appears while the screen is open shows up in the list.
+    class AudioOutputComponent : public OptionListComponent<std::string>
+    {
+    public:
+        AudioOutputComponent()
+            : OptionListComponent<std::string>(_("AUDIO OUTPUT"), false)
+        {
+            // The list is filled before the callback is set, so that adding the entries does not
+            // look like a selection.
+            rebuild();
+
+            setCallback([this](const std::string& outputId) {
+                if (mRebuilding)
+                    return;
+
+                AudioOutputManager::getInstance().setDefault(outputId);
+                // The live stream is pinned to the sink it was opened on, so the device is
+                // reopened once the sound server confirms the new default.
+                AudioManager::getInstance().requestAudioReopenForOutput(outputId);
+            });
+        }
+
+        void update(int deltaTime) override
+        {
+            OptionListComponent<std::string>::update(deltaTime);
+
+            if (AudioOutputManager::getInstance().getSequence() != mSequence)
+                rebuild();
+        }
+
+    private:
+        void rebuild()
+        {
+            AudioOutputManager& manager {AudioOutputManager::getInstance()};
+            const std::shared_ptr<const AudioSnapshot> snapshot {manager.getSnapshot()};
+
+            // The snapshot's own sequence, so that the entries on the screen cannot be older than
+            // the sequence recorded for them.
+            mSequence = snapshot != nullptr ? snapshot->sequence : manager.getSequence();
+
+            if (snapshot == nullptr)
+                return;
+
+            // Filling the entries fires the selection callback, which must not reach the manager.
+            mRebuilding = true;
+            clearEntries();
+
+            if (snapshot->outputs.empty()) {
+                // The row is already on the screen, so it has to say something even when the sound
+                // server is gone.
+                add(_("NO AUDIO OUTPUTS"), std::string {}, true);
+                mRebuilding = false;
+                return;
+            }
+
+            bool foundDefault {false};
+            for (const AudioOutput& output : snapshot->outputs) {
+                const bool isDefault {!snapshot->defaultId.empty() &&
+                                      output.id == snapshot->defaultId};
+                foundDefault = foundDefault || isDefault;
+
+                const std::string label {output.description.empty() ? output.id :
+                                                                     output.description};
+                add(label, output.id, isDefault);
+            }
+
+            // When the default output is not part of the list any more nothing would be selected,
+            // and the row would keep showing the old text.
+            if (!foundDefault)
+                selectEntry(0);
+
+            mRebuilding = false;
+        }
+
+        std::uint64_t mSequence {0};
+        bool mRebuilding {false};
+    };
+
+} // namespace
+
 GuiMenu::GuiMenu()
     : mRenderer {Renderer::getInstance()}
     , mMenu {_("MAIN MENU")}
@@ -72,6 +160,13 @@ GuiMenu::GuiMenu()
     if (isFullUI)
         addEntry(_("INPUT DEVICE SETTINGS"), mMenuColorPrimary, true,
                  [this] { openInputDeviceOptions(); });
+
+    // Strictly full UI mode: unlike the other settings entries this one also has to stay out of
+    // kid mode when EnableMenuKidMode is set. The entry also needs a real backend, so a build
+    // without Bluetooth support looks exactly like it did before the feature existed.
+    if (isFullUI && !UIModeController::getInstance()->isUIModeKid() &&
+        BluetoothManager::hasBackend())
+        addEntry(_("BLUETOOTH"), mMenuColorPrimary, true, [this] { openBluetoothSettings(); });
 
     if (isFullUI)
         addEntry(_("GAME COLLECTION SETTINGS"), mMenuColorPrimary, true,
@@ -1258,6 +1353,37 @@ void GuiMenu::openSoundOptions()
     });
 #endif
 
+    // Audio output. Choosing one changes the sound server's default, which the navigation sounds
+    // and the games follow, so there is nothing to save when the screen closes.
+    if (UIModeController::getInstance()->isUIModeFull() &&
+        !UIModeController::getInstance()->isUIModeKid() &&
+        AudioOutputManager::getInstance().isAvailable()) {
+        s->addWithLabel(_("AUDIO OUTPUT"), std::make_shared<AudioOutputComponent>());
+    }
+
+    // What happens when a Bluetooth audio device connects. The change applies immediately, so
+    // there is nothing to save when the screen closes.
+    if (UIModeController::getInstance()->isUIModeFull() &&
+        !UIModeController::getInstance()->isUIModeKid()) {
+        auto bluetoothAudioMode {std::make_shared<OptionListComponent<std::string>>(
+            _("BLUETOOTH AUDIO"), false)};
+        const std::string currentMode {Settings::getInstance()->getString("BluetoothAudioMode")};
+        bluetoothAudioMode->add(_("ASK"), "ask", currentMode == "ask");
+        bluetoothAudioMode->add(_("AUTO"), "auto", currentMode == "auto");
+        bluetoothAudioMode->add(_("OFF"), "off", currentMode == "off");
+
+        // A manually edited setting that matches none of the entries leaves nothing selected.
+        if (bluetoothAudioMode->getSelectedObjects().size() == 0)
+            bluetoothAudioMode->selectEntry(0);
+
+        bluetoothAudioMode->setCallback([](const std::string& value) {
+            Settings::getInstance()->setString("BluetoothAudioMode", value);
+            Settings::getInstance()->saveFile();
+        });
+
+        s->addWithLabel(_("BLUETOOTH AUDIO"), bluetoothAudioMode);
+    }
+
 // TODO: Implement system volume support for macOS and Android.
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__FreeBSD__) && !defined(__HAIKU__)
     // System volume.
@@ -1362,6 +1488,11 @@ void GuiMenu::openSoundOptions()
 
     s->setSize(mSize);
     mWindow->pushGui(s);
+}
+
+void GuiMenu::openBluetoothSettings()
+{
+    mWindow->pushGui(new GuiBluetoothSettings);
 }
 
 void GuiMenu::openInputDeviceOptions()

@@ -12,6 +12,7 @@ set(CORE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ApplicationVersion.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AsyncHandle.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioRecovery.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GuiComponent.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HttpReq.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImageIO.h
@@ -24,6 +25,15 @@ set(CORE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemStatus.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.h
+
+    # Audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioSinkList.h
+
+    # Bluetooth
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothMessageParser.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.h
 
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/Animation.h
@@ -100,6 +110,7 @@ set(CORE_HEADERS
 
 set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioRecovery.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GuiComponent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HttpReq.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImageIO.cpp
@@ -113,6 +124,14 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SystemStatus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ThemeData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Window.cpp
+
+    # Audio
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioSinkList.cpp
+
+    # Bluetooth
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothState.cpp
 
     # Animations
     ${CMAKE_CURRENT_SOURCE_DIR}/src/animations/AnimationController.cpp
@@ -193,6 +212,32 @@ if(IOS)
 endif()
 
 #---------------------------------------------------------------------------------------------------
+# Bluetooth device management.
+#
+# The reducer is platform independent and is always compiled. The BlueZ backend is only compiled
+# when the build option enabled it, which configure only allows when libsystemd was found.
+
+if(BLUETOOTH_MANAGER)
+    set(CORE_SOURCES ${CORE_SOURCES}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManagerBlueZ.cpp)
+    list(APPEND COMMON_INCLUDE_DIRS ${LIBSYSTEMD_INCLUDE_DIRS})
+    list(APPEND COMMON_LIBRARIES ${LIBSYSTEMD_LINK_LIBRARIES})
+endif()
+
+#---------------------------------------------------------------------------------------------------
+# Audio output device management.
+#
+# The interface is platform independent and is always compiled. The libpulse implementation is only
+# compiled when the build option enabled it, which configure only allows when libpulse was found.
+
+if(AUDIO_OUTPUT_MANAGER)
+    set(CORE_SOURCES ${CORE_SOURCES}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManagerPulse.cpp)
+    list(APPEND COMMON_INCLUDE_DIRS ${LIBPULSE_INCLUDE_DIRS})
+    list(APPEND COMMON_LIBRARIES ${LIBPULSE_LINK_LIBRARIES})
+endif()
+
+#---------------------------------------------------------------------------------------------------
 # Miscellaneous configuration.
 
 include_directories(${COMMON_INCLUDE_DIRS})
@@ -202,4 +247,32 @@ target_link_libraries(es-core ${COMMON_LIBRARIES})
 if(ANDROID)
     set_target_properties(es-core PROPERTIES ARCHIVE_OUTPUT_DIRECTORY
                           ${PROJECT_SOURCE_DIR}/../android_${ANDROID_ABI})
+endif()
+
+#---------------------------------------------------------------------------------------------------
+# Tests.
+
+if(BUILD_TESTS)
+    add_executable(es-core-tests
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioOutputManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothAudioPromptTrackerTests.cpp
+                   # The prompt tracker is es-app code, but it only depends on the manager
+                   # interfaces, so its timing decisions are covered from here.
+                   ${CMAKE_CURRENT_SOURCE_DIR}/../es-app/src/BluetoothAudioPromptTracker.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioRecoveryTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioSinkListTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothMessageParserTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/StringUtilTests.cpp)
+    target_include_directories(es-core-tests PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/tests
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../es-app/src)
+    # Same link line as es-app, as linking es-core pulls in the static LunaSVG library.
+    target_link_libraries(es-core-tests ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg)
+    add_test(NAME es-core-tests COMMAND es-core-tests)
+    # The Bluetooth manager test starts the backend worker, which must shut down again.
+    set_tests_properties(es-core-tests PROPERTIES TIMEOUT 120)
 endif()

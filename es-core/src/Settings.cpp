@@ -241,6 +241,8 @@ void Settings::setDefaults()
     mBoolMap["MediaViewerVideoAudio"] = {true, true};
     mBoolMap["ScreensaverVideoAudio"] = {true, true};
     mBoolMap["NavigationSounds"] = {true, true};
+    // Whether a connected Bluetooth audio device is offered, switched to automatically or ignored.
+    mStringMap["BluetoothAudioMode"] = {"ask", "ask"};
 
     // Input device settings.
     mStringMap["InputControllerType"] = {"xbox", "xbox"};

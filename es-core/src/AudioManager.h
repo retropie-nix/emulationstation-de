@@ -9,9 +9,12 @@
 #ifndef ES_CORE_AUDIO_MANAGER_H
 #define ES_CORE_AUDIO_MANAGER_H
 
+#include "AudioRecovery.h"
+
 #include <SDL2/SDL_audio.h>
 #include <atomic>
 #include <memory>
+#include <string>
 #include <vector>
 
 class Sound;
@@ -24,6 +27,13 @@ public:
 
     void init();
     void deinit();
+
+    // Handles an SDL_AUDIODEVICEREMOVED event. Only the device that is in use matters.
+    void handleAudioDeviceRemoved(SDL_AudioDeviceID device);
+    // Called once per frame, after the window and the prompt have been updated.
+    void updateAudioDeviceRecovery(bool gameLaunching);
+    // Asks for the device to be reopened once the sound server reports this output as the default.
+    void requestAudioReopenForOutput(const std::string& outputId);
 
     void registerSound(std::shared_ptr<Sound> sound);
     void unregisterSound(std::shared_ptr<Sound> sound);
@@ -49,6 +59,10 @@ private:
 
     static void mixAudio(void* unused, Uint8* stream, int len);
 
+    // Full deinit and init, which is what survives a dead SDL audio context.
+    bool reopenDevice();
+
+    static inline AudioRecovery sRecovery;
     static inline SDL_AudioStream* sConversionStream {nullptr};
     static inline std::vector<std::shared_ptr<Sound>> sSoundVector;
     static inline std::atomic<bool> sMuteStream {false};
