@@ -13,6 +13,7 @@
 //
 
 #include "ApplicationUpdater.h"
+#include "BluetoothAudioPrompt.h"
 #include "ApplicationVersion.h"
 #include "AudioManager.h"
 #include "CollectionSystemsManager.h"
@@ -568,6 +569,11 @@ void applicationLoop()
         }
 #endif
         window->update(deltaTime);
+
+        // Offers a newly connected Bluetooth audio device from any screen, which the per screen
+        // update hooks cannot do as only the topmost one of them runs.
+        BluetoothAudioPrompt::getInstance().update();
+
         window->render();
 
         renderer->swapBuffers();

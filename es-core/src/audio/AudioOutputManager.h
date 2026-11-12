@@ -24,6 +24,9 @@ struct AudioOutput {
     // The human readable description the sound server reports for it.
     std::string description;
     bool isDefault {false};
+    // The address of the Bluetooth device this sink belongs to, empty for every other sink. This is
+    // how a sink is matched to a Bluetooth device; the sink name is not parsed for it.
+    std::string bluetoothAddress;
 };
 
 struct AudioSnapshot {

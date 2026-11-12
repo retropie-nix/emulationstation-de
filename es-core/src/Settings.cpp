@@ -241,6 +241,7 @@ void Settings::setDefaults()
     mBoolMap["MediaViewerVideoAudio"] = {true, true};
     mBoolMap["ScreensaverVideoAudio"] = {true, true};
     mBoolMap["NavigationSounds"] = {true, true};
+    mBoolMap["BluetoothPromptAudio"] = {true, true};
 
     // Input device settings.
     mStringMap["InputControllerType"] = {"xbox", "xbox"};
