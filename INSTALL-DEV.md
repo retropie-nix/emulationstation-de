@@ -171,6 +171,14 @@ make
 
 When this flag is enabled the menu option _Run in background (while game is launched)_ in the Other settings menu is disabled and all functionality related to running ES-DE in the background is also disabled.
 
+On Linux you can also build the optional Bluetooth device management and audio output selection. They are disabled by default and require the libsystemd and libpulse development files respectively:
+```
+cmake -DBLUETOOTH_MANAGER=on -DAUDIO_OUTPUT_MANAGER=on .
+make
+```
+
+The build fails during configuration when an option is enabled on an unsupported platform or when its library cannot be found. A test executable for the unit tests can be enabled with `-DBUILD_TESTS=on`; the tests are also run by the check phase when building the provided package.
+
 By default the master branch will be used, which is where development takes place. To instead build a stable release, switch to the `stable-x.x` branch for the version, for example:
 
 ```

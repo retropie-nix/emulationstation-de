@@ -591,6 +591,31 @@ Any custom configuration is applied per unique device ID (GUID). So if two ident
 
 If you have issues with your input configuration, as a last resort you can reset all mappings by deleting or renaming the file `~/ES-DE/settings/es_input.xml`
 
+## Bluetooth
+
+The _Bluetooth_ entry on the main menu lets you pair and manage Bluetooth devices such as controllers, headsets and speakers. It is available in the Full UI mode and shows the adapter state, a scan entry and the devices that have been found or paired.
+
+Put the device into pairing mode, start a scan and select it from the list to pair and connect it. Selecting an already known device opens an action screen where it can be paired, connected, disconnected or forgotten. Scanning stops automatically after about 30 seconds, and the adapter can be powered on or off from the same screen.
+
+Controllers are usable as soon as they are paired and connected. Headsets and speakers additionally become available as audio outputs, as described below.
+
+### Bluetooth audio
+
+When a headset or speaker connects, ES-DE can switch the audio output to it, ask first, or ignore it. This is controlled by the _Bluetooth audio_ entry in the _Sound settings_ menu:
+
+* _Ask_ - A confirmation dialog is shown when a Bluetooth audio device connects.
+* _Automatic_ - The audio output switches to the device after a short delay, without asking.
+* _Off_ - The device is ignored.
+
+The current audio output is also listed as _Audio output_ in the same menu, where it can be selected manually. That entry is only available when the sound server can be reached.
+
+A connected headset or speaker appears in the audio output list automatically. Some things are worth knowing:
+
+* Headset microphones work, because the headset and hands-free profiles are available alongside the higher-quality A2DP profile.
+* Some headsets fall back to the headset profile after reconnecting, which sounds noticeably worse. Disconnect and connect the device again to return to A2DP.
+* Headsets that power themselves off when idle disconnect on their own; that is expected.
+* If a device stops connecting or stays on the wrong profile, forget it in the Bluetooth screen and pair it again.
+
 ## System view (main screen)
 
 When starting ES-DE with the default settings, you will see the System view first. From here you can navigate your game systems and enter their respective gamelists.
