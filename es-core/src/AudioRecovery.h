@@ -32,8 +32,15 @@ public:
     void requestDefault(const std::string& outputId, std::uint32_t now);
     void observeDefault(const std::string& defaultId, std::uint32_t now);
 
-    // True when an attempt is due. A game launch suspends attempts without consuming the delay.
-    bool shouldReopen(std::uint32_t now, bool gameLaunching);
+    // Reports the default output on every observation. The reopen needs a real output, because
+    // the sound server comes back before WirePlumber has re-created the sinks and only the dummy
+    // sink exists at that point. While a recovery is pending, a change to a usable default (or
+    // one arriving after the fallback) re-arms it instead of waiting for the next trigger.
+    void outputState(bool usable, const std::string& defaultId, std::uint32_t now);
+
+    // True when an attempt is due. Without a usable output the attempt is deferred and the
+    // recovery stays pending. A game launch suspends attempts without consuming the delay.
+    bool shouldReopen(std::uint32_t now, bool gameLaunching, bool outputUsable);
 
     // Reports the outcome. A failure retries with backoff and gives up after a few attempts.
     void reopenFinished(bool success, std::uint32_t now);
@@ -58,6 +65,9 @@ private:
     bool mAvailabilityKnown {false};
     bool mWasAvailable {false};
     bool mEverAvailable {false};
+    bool mDefaultKnown {false};
+    bool mLastDefaultUsable {false};
+    std::string mLastDefaultId;
     std::string mRequestedDefault;
     std::uint32_t mRequestedAt {0};
 };
