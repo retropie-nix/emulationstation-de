@@ -59,13 +59,47 @@ void AudioRecovery::observeDefault(const std::string& defaultId, const std::uint
         mRequestedDefault.clear();
 }
 
-bool AudioRecovery::shouldReopen(const std::uint32_t now, const bool gameLaunching)
+void AudioRecovery::outputState(const bool usable,
+                                const std::string& defaultId,
+                                const std::uint32_t now)
+{
+    const std::string currentId {usable ? defaultId : std::string {}};
+
+    if (!mDefaultKnown) {
+        mDefaultKnown = true;
+        mLastDefaultUsable = usable;
+        mLastDefaultId = currentId;
+        return;
+    }
+
+    // Only a pending recovery is re-armed: a WirePlumber restart tears the sinks down and builds
+    // them again while the stream relinks by itself, and there is no recovery to speak of there.
+    if (mPending && usable && (!mLastDefaultUsable || defaultId != mLastDefaultId))
+        arm(now);
+
+    mLastDefaultUsable = usable;
+    mLastDefaultId = currentId;
+}
+
+bool AudioRecovery::shouldReopen(const std::uint32_t now,
+                                 const bool gameLaunching,
+                                 const bool outputUsable)
 {
     if (!mPending || gameLaunching)
         return false;
 
     // Signed arithmetic so that a wrapped tick counter still compares correctly.
-    return static_cast<std::int32_t>(now - mNextAttempt) >= 0;
+    if (static_cast<std::int32_t>(now - mNextAttempt) < 0)
+        return false;
+
+    if (!outputUsable) {
+        // The sound server is back but the real sinks are not; opening now would open the dummy.
+        // Keep the recovery pending and look again shortly.
+        mNextAttempt = now + sFirstRetryDelay;
+        return false;
+    }
+
+    return true;
 }
 
 void AudioRecovery::reopenFinished(const bool success, const std::uint32_t now)

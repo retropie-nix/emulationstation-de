@@ -15,6 +15,39 @@
 
 #include <SDL2/SDL.h>
 
+namespace
+{
+    // PipeWire's fallback sink. Opening it plays nothing, so it is not a usable output.
+    bool isDummyOutput(const AudioOutput& output)
+    {
+        return output.id == "auto_null" || output.description == "Dummy Output";
+    }
+
+    // The default output, when it exists in the list and is not the fallback. Its identifier is
+    // returned too, which is how the recovery notices that another sink became the default.
+    bool findUsableDefault(const std::shared_ptr<const AudioSnapshot>& snapshot,
+                           std::string& defaultId)
+    {
+        if (snapshot == nullptr || !snapshot->available || snapshot->defaultId.empty())
+            return false;
+
+        for (const AudioOutput& output : snapshot->outputs) {
+            if (output.id != snapshot->defaultId)
+                continue;
+
+            if (isDummyOutput(output))
+                return false;
+
+            defaultId = snapshot->defaultId;
+            return true;
+        }
+
+        // A default that is not in the list points at an object that is already gone.
+        return false;
+    }
+
+} // namespace
+
 AudioManager::AudioManager() noexcept
 {
     // Init on construction.
@@ -174,12 +207,16 @@ void AudioManager::updateAudioDeviceRecovery(const bool gameLaunching)
     AudioOutputManager& outputs {AudioOutputManager::getInstance()};
     const std::shared_ptr<const AudioSnapshot> snapshot {outputs.getSnapshot()};
 
+    std::string usableDefault;
+    const bool outputUsable {findUsableDefault(snapshot, usableDefault)};
+
     sRecovery.serverAvailability(outputs.isAvailable(), now);
+    sRecovery.outputState(outputUsable, usableDefault, now);
 
     if (snapshot != nullptr)
         sRecovery.observeDefault(snapshot->defaultId, now);
 
-    if (!sRecovery.shouldReopen(now, gameLaunching))
+    if (!sRecovery.shouldReopen(now, gameLaunching, outputUsable))
         return;
 
     sRecovery.reopenFinished(reopenDevice(), now);
