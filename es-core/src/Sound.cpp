@@ -125,6 +125,23 @@ void Sound::init()
     SDL_FreeWAV(data);
 }
 
+void Sound::reinitAll()
+{
+    // The sounds are collected first because deinit() removes its entry from the cache, and the
+    // entries are put back afterwards so that Sound::get() keeps returning the same objects.
+    std::vector<std::shared_ptr<Sound>> sounds;
+    sounds.reserve(sMap.size());
+
+    for (const auto& entry : sMap)
+        sounds.push_back(entry.second);
+
+    for (const auto& sound : sounds) {
+        sound->deinit();
+        sound->init();
+        sMap[sound->mPath] = sound;
+    }
+}
+
 void Sound::deinit()
 {
     mPlaying = false;

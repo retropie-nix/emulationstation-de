@@ -12,6 +12,7 @@ set(CORE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ApplicationVersion.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AsyncHandle.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioRecovery.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GuiComponent.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HttpReq.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImageIO.h
@@ -109,6 +110,7 @@ set(CORE_HEADERS
 
 set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/AudioRecovery.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/GuiComponent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HttpReq.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ImageIO.cpp
@@ -259,6 +261,7 @@ if(BUILD_TESTS)
                    # The prompt tracker is es-app code, but it only depends on the manager
                    # interfaces, so its timing decisions are covered from here.
                    ${CMAKE_CURRENT_SOURCE_DIR}/../es-app/src/BluetoothAudioPromptTracker.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioRecoveryTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioSinkListTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothMessageParserTests.cpp

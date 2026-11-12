@@ -8,6 +8,7 @@
 
 #include "BluetoothAudioPrompt.h"
 
+#include "AudioManager.h"
 #include "Settings.h"
 #include "UIModeController.h"
 #include "Window.h"
@@ -83,6 +84,8 @@ void BluetoothAudioPrompt::showPrompt(const BluetoothAudioPromptTracker::Offer& 
         [this, outputId] {
             mPromptGui = nullptr;
             AudioOutputManager::getInstance().setDefault(outputId);
+            // Menu audio follows the accepted device once the sound server confirms the default.
+            AudioManager::getInstance().requestAudioReopenForOutput(outputId);
         },
         _("NO"), [this] { mPromptGui = nullptr; }, "", nullptr, "", nullptr,
         [this] { mPromptGui = nullptr; })};

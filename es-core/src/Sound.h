@@ -43,6 +43,8 @@ public:
     static std::shared_ptr<Sound> getFromTheme(ThemeData* const theme,
                                                const std::string& view,
                                                const std::string& elem);
+    // Converts every cached sample again, for when the reopened device negotiated another format.
+    static void reinitAll();
 
 private:
     Sound(const std::string& path = "");
