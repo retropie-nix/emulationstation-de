@@ -27,6 +27,7 @@ set(CORE_HEADERS
 
     # Audio
     ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioSinkList.h
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.h
@@ -124,6 +125,7 @@ set(CORE_SOURCES
 
     # Audio
     ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioSinkList.cpp
 
     # Bluetooth
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManager.cpp
@@ -217,7 +219,7 @@ if(BLUETOOTH_MANAGER)
     set(CORE_SOURCES ${CORE_SOURCES}
                      ${CMAKE_CURRENT_SOURCE_DIR}/src/bluetooth/BluetoothManagerBlueZ.cpp)
     list(APPEND COMMON_INCLUDE_DIRS ${LIBSYSTEMD_INCLUDE_DIRS})
-    list(APPEND COMMON_LIBRARIES ${LIBSYSTEMD_LIBRARIES})
+    list(APPEND COMMON_LIBRARIES ${LIBSYSTEMD_LINK_LIBRARIES})
 endif()
 
 #---------------------------------------------------------------------------------------------------
@@ -230,7 +232,7 @@ if(AUDIO_OUTPUT_MANAGER)
     set(CORE_SOURCES ${CORE_SOURCES}
                      ${CMAKE_CURRENT_SOURCE_DIR}/src/audio/AudioOutputManagerPulse.cpp)
     list(APPEND COMMON_INCLUDE_DIRS ${LIBPULSE_INCLUDE_DIRS})
-    list(APPEND COMMON_LIBRARIES ${LIBPULSE_LIBRARIES})
+    list(APPEND COMMON_LIBRARIES ${LIBPULSE_LINK_LIBRARIES})
 endif()
 
 #---------------------------------------------------------------------------------------------------
@@ -253,6 +255,7 @@ if(BUILD_TESTS)
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestHarness.h
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/TestMain.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioOutputManagerTests.cpp
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/AudioSinkListTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothManagerTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothMessageParserTests.cpp
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/BluetoothStateTests.cpp
