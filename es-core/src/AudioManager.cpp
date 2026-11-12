@@ -11,6 +11,7 @@
 #include "Log.h"
 #include "Settings.h"
 #include "Sound.h"
+#include "audio/AudioOutputManager.h"
 
 #include <SDL2/SDL.h>
 
@@ -35,6 +36,8 @@ AudioManager& AudioManager::getInstance()
 void AudioManager::init()
 {
     LOG(LogInfo) << "Setting up AudioManager...";
+
+    sHasAudioDevice = false;
 
 #if defined(__ANDROID__)
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
@@ -86,8 +89,10 @@ void AudioManager::init()
 
     if (sAudioDevice == 0) {
         LOG(LogError) << "Unable to open audio device: " << SDL_GetError();
-        sHasAudioDevice = false;
+        return;
     }
+
+    sHasAudioDevice = true;
 
     if (sAudioFormat.freq != sRequestedAudioFormat.freq) {
         LOG(LogDebug) << "AudioManager::init(): Requested sample rate "
@@ -131,18 +136,81 @@ void AudioManager::init()
 
 void AudioManager::deinit()
 {
-    if (sAudioDevice == 0)
+    if (sConversionStream != nullptr) {
+        if (sAudioDevice != 0) {
+            SDL_LockAudioDevice(sAudioDevice);
+            SDL_FreeAudioStream(sConversionStream);
+            SDL_UnlockAudioDevice(sAudioDevice);
+        }
+        else {
+            SDL_FreeAudioStream(sConversionStream);
+        }
+
+        sConversionStream = nullptr;
+    }
+
+    if (sAudioDevice != 0) {
+        SDL_CloseAudioDevice(sAudioDevice);
+        sAudioDevice = 0;
+    }
+
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+}
+
+void AudioManager::handleAudioDeviceRemoved(const SDL_AudioDeviceID device)
+{
+    // A removal of a device that is not the one that was opened does not affect playback.
+    if (sAudioDevice == 0 || device != sAudioDevice)
         return;
 
-    SDL_LockAudioDevice(sAudioDevice);
-    SDL_FreeAudioStream(sConversionStream);
-    SDL_UnlockAudioDevice(sAudioDevice);
+    LOG(LogWarning) << "The audio device was removed";
+    sRecovery.deviceRemoved(SDL_GetTicks());
+}
 
-    SDL_CloseAudio();
-    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+void AudioManager::updateAudioDeviceRecovery(const bool gameLaunching)
+{
+    const std::uint32_t now {SDL_GetTicks()};
 
-    sConversionStream = nullptr;
-    sAudioDevice = 0;
+    AudioOutputManager& outputs {AudioOutputManager::getInstance()};
+    const std::shared_ptr<const AudioSnapshot> snapshot {outputs.getSnapshot()};
+
+    sRecovery.serverAvailability(outputs.isAvailable(), now);
+
+    if (snapshot != nullptr)
+        sRecovery.observeDefault(snapshot->defaultId, now);
+
+    if (!sRecovery.shouldReopen(now, gameLaunching))
+        return;
+
+    sRecovery.reopenFinished(reopenDevice(), now);
+}
+
+void AudioManager::requestAudioReopenForOutput(const std::string& outputId)
+{
+    sRecovery.requestDefault(outputId, SDL_GetTicks());
+}
+
+bool AudioManager::reopenDevice()
+{
+    LOG(LogInfo) << "Reopening the audio device...";
+
+    // Navigation sounds and buffered video audio are stopped before the device and the conversion
+    // stream go away.
+    stop();
+    clearStream();
+    deinit();
+    init();
+
+    if (sAudioDevice == 0) {
+        LOG(LogWarning) << "Could not reopen the audio device";
+        return false;
+    }
+
+    // The cached samples were converted for the format of the old device.
+    Sound::reinitAll();
+
+    LOG(LogInfo) << "Audio device reopened";
+    return true;
 }
 
 void AudioManager::mixAudio(void* /*unused*/, Uint8* stream, int len)
@@ -252,6 +320,9 @@ void AudioManager::unregisterSound(std::shared_ptr<Sound> sound)
 
 void AudioManager::play()
 {
+    if (sAudioDevice == 0)
+        return;
+
     // Unpause audio, the mixer will figure out if samples need to be played...
     SDL_PauseAudioDevice(sAudioDevice, 0);
 }
@@ -263,12 +334,19 @@ void AudioManager::stop()
         if (sSoundVector.at(i)->isPlaying())
             sSoundVector[i]->stop();
     }
+
+    if (sAudioDevice == 0)
+        return;
+
     // Pause audio.
     SDL_PauseAudioDevice(sAudioDevice, 1);
 }
 
 void AudioManager::setupAudioStream(int sampleRate)
 {
+    if (sAudioDevice == 0)
+        return;
+
     SDL_AudioStatus audioStatus {SDL_GetAudioDeviceStatus(sAudioDevice)};
 
     // It's very important to pause the audio device before setting up the stream,
@@ -291,6 +369,9 @@ void AudioManager::setupAudioStream(int sampleRate)
 
 void AudioManager::processStream(const void* samples, unsigned count)
 {
+    if (sAudioDevice == 0 || sConversionStream == nullptr)
+        return;
+
     SDL_LockAudioDevice(sAudioDevice);
 
     if (SDL_AudioStreamPut(sConversionStream, samples, count * sizeof(Uint8)) == -1) {
@@ -308,6 +389,9 @@ void AudioManager::processStream(const void* samples, unsigned count)
 
 void AudioManager::clearStream()
 {
+    if (sAudioDevice == 0 || sConversionStream == nullptr)
+        return;
+
     SDL_LockAudioDevice(sAudioDevice);
     SDL_AudioStreamClear(sConversionStream);
     SDL_UnlockAudioDevice(sAudioDevice);

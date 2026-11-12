@@ -15,6 +15,7 @@
 #endif
 
 #include "ApplicationVersion.h"
+#include "AudioManager.h"
 #include "CollectionSystemsManager.h"
 #include "FileFilterIndex.h"
 #include "FileSorts.h"
@@ -73,8 +74,13 @@ namespace
             rebuild();
 
             setCallback([this](const std::string& outputId) {
-                if (!mRebuilding)
-                    AudioOutputManager::getInstance().setDefault(outputId);
+                if (mRebuilding)
+                    return;
+
+                AudioOutputManager::getInstance().setDefault(outputId);
+                // The live stream is pinned to the sink it was opened on, so the device is
+                // reopened once the sound server confirms the new default.
+                AudioManager::getInstance().requestAudioReopenForOutput(outputId);
             });
         }
 

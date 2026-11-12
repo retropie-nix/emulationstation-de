@@ -539,6 +539,9 @@ void applicationLoop()
                     ViewController::getInstance()->resetViewVideosTimer();
                 }
 #endif
+                if (event.type == SDL_AUDIODEVICEREMOVED)
+                    AudioManager::getInstance().handleAudioDeviceRemoved(event.adevice.which);
+
                 InputManager::getInstance().parseEvent(event);
 
                 if (event.type == SDL_QUIT)
@@ -573,6 +576,12 @@ void applicationLoop()
         // Offers a newly connected Bluetooth audio device from any screen, which the per screen
         // update hooks cannot do as only the topmost one of them runs.
         BluetoothAudioPrompt::getInstance().update();
+
+        // Reopens SDL audio when the device disappeared or the output changed, which SDL's
+        // PipeWire backend does not survive by itself. Nothing is reopened during a game launch.
+        const bool gameLaunching {window->isLaunchScreenDisplayed() ||
+                                  window->getGameLaunchedState()};
+        AudioManager::getInstance().updateAudioDeviceRecovery(gameLaunching);
 
         window->render();
 
